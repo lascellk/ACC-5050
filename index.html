@@ -1,0 +1,1024 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Almonte Curling Club - 50/50 Draw App</title>
+  <!-- v2.3: adds Google Cast support (Cast button in header + TV display mode) -->
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- PapaParse for CSV Parsing -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+  <!-- Canvas Confetti -->
+  <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+  <!-- FontAwesome Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <style>
+    @keyframes pulse-ring {
+      0% { transform: scale(0.95); opacity: 0.8; }
+      50% { transform: scale(1.05); opacity: 1; }
+      100% { transform: scale(0.95); opacity: 0.8; }
+    }
+    .animate-pulse-ring {
+      animation: pulse-ring 1.8s infinite ease-in-out;
+    }
+
+    /* ---------------------------------------------------------------
+       TV MODE (what the Chromecast shows)
+       The page opened on the TV gets ?display=tv in its URL, which adds
+       the "tv-mode" class to <body>. Everything marked "controller-only"
+       (settings, history, draw button, cast button) is hidden there, and
+       the draw display is stretched full-width with bigger text.
+       --------------------------------------------------------------- */
+    body.tv-mode .controller-only { display: none !important; }
+    body.tv-mode main { max-width: none; }
+    body.tv-mode #display-col { grid-column: 1 / -1; }
+    body.tv-mode #display-box { min-height: calc(100vh - 170px); }
+    body.tv-mode #winner-name { font-size: clamp(3rem, 8vw, 7rem); line-height: 1.05; }
+    body.tv-mode #shuffle-name { font-size: clamp(3rem, 7vw, 6rem); height: auto; }
+    body.tv-mode #winner-details { font-size: 1.25rem; max-width: 64rem; }
+    body.tv-mode #winner-badge { font-size: 1rem; }
+    body.tv-mode #display-idle h3 { font-size: 2.5rem; }
+    body.tv-mode #display-idle p { font-size: 1.25rem; max-width: 40rem; }
+  </style>
+</head>
+<body class="bg-slate-900 text-slate-100 min-h-screen font-sans antialiased">
+
+  <!-- Header -->
+  <header class="bg-slate-800 border-b border-slate-700 shadow-lg">
+    <div class="max-w-6xl mx-auto px-4 py-5 flex flex-col md:flex-row justify-between items-center gap-4">
+      <div class="flex items-center space-x-4">
+       <div>
+          <h1 class="text-2xl font-bold tracking-tight text-white">Almonte Curling Club</h1>
+          <p class="text-xs text-red-400 font-semibold tracking-wider uppercase">Official 50/50 Raffle Draw App</p>
+        </div>
+      </div>
+
+      <!-- Stats + Cast button share the right side of the header -->
+      <div class="flex items-center gap-3 flex-wrap justify-center">
+        <div class="flex items-center space-x-3 text-xs md:text-sm bg-slate-900/60 px-4 py-2 rounded-lg border border-slate-700 flex-wrap justify-center">
+          <div>
+            <span class="text-slate-400">Total Loaded:</span> 
+            <span id="stat-total" class="font-bold text-white">0</span>
+          </div>
+          <div class="text-slate-600">|</div>
+          <div>
+            <span class="text-slate-400">Eligible Pool:</span> 
+            <span id="stat-eligible" class="font-bold text-emerald-400">0</span>
+          </div>
+          <div class="text-slate-600">|</div>
+          <div>
+            <span class="text-slate-400">Draw #:</span> 
+            <span id="stat-draw-num" class="font-bold text-amber-400">1</span>
+          </div>
+          <div class="text-slate-600">|</div>
+          <div>
+            <span class="text-slate-400">Carryover Amount:</span> 
+            <span id="stat-pot" class="font-bold text-purple-400">$0.00</span>
+          </div>
+          <div class="text-slate-600">|</div>
+          <div>
+            <span class="text-slate-400">Winner Share:</span> 
+            <span id="stat-prize" class="font-bold text-emerald-400">$0.00</span>
+          </div>
+        </div>
+
+        <!-- Cast Button (controller only — never shown on the TV itself) -->
+        <button id="cast-btn" type="button" title="Cast the draw screen to a TV"
+          class="controller-only flex items-center gap-2 px-4 py-2 rounded-lg border text-xs md:text-sm font-semibold transition border-slate-600 bg-slate-900/60 text-slate-200 hover:border-sky-400 hover:text-sky-300">
+          <i id="cast-icon" class="fa-brands fa-chromecast"></i>
+          <span id="cast-label">Cast</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main class="max-w-6xl mx-auto px-4 py-8 grid grid-cols-1 lg:grid-cols-3 gap-8">
+    
+    <!-- Controls & Data Input -->
+    <section class="lg:col-span-1 space-y-6 controller-only">
+      
+      <!-- Google Sheets Connections -->
+      <div class="bg-slate-800 rounded-xl p-6 border border-slate-700 shadow-md space-y-4">
+        <h2 class="text-lg font-semibold text-white flex items-center gap-2">
+          <i class="fa-solid fa-table text-emerald-400"></i> Google Sheets Live Data
+        </h2>
+        
+        <div>
+          <label class="block text-xs font-medium text-slate-300 mb-1">Member Data URL</label>
+          <input id="sheets-url-input" type="url" placeholder="https://docs.google.com/spreadsheets/d/e/.../pub?output=csv" class="w-full bg-slate-900 border border-slate-700 text-slate-200 text-xs rounded-lg p-2.5 focus:ring-emerald-500 focus:border-emerald-500 transition-colors">
+        </div>
+
+        <div>
+          <label class="block text-xs font-medium text-slate-300 mb-1">Draw Results URL</label>
+          <input id="web-app-url-input" type="url" placeholder="https://script.google.com/macros/s/AKfycbzC1OsTpoEyC-57SdG5xRNJEc98KHbpM3yQ5qW9C1iR-Wst4BUzUwKefpKJX5ZMNeJ2YQ/exec" class="w-full bg-slate-900 border border-slate-700 text-slate-200 text-xs rounded-lg p-2.5 focus:ring-emerald-500 focus:border-emerald-500 transition-colors">
+        </div>
+
+        <button id="sync-sheets-btn" class="w-full py-2.5 px-4 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs rounded-lg shadow transition flex items-center justify-center gap-2">
+          <i class="fa-solid fa-rotate"></i>
+          <span>Sync from Google Sheets</span>
+        </button>
+
+        <div id="file-status" class="text-xs text-slate-400 flex items-center gap-2 pt-1">
+          <i class="fa-solid fa-circle-info text-slate-500"></i>
+          <span>Connecting to sheet...</span>
+        </div>
+      </div>
+
+      <!-- Draw Settings & Carryover Card -->
+      <div class="bg-slate-800 rounded-xl p-6 border border-slate-700 shadow-md space-y-4">
+        <h2 class="text-lg font-semibold text-white flex items-center gap-2">
+          <i class="fa-solid fa-sliders text-red-500"></i> Draw Settings
+        </h2>
+
+        <div>
+          <label class="block text-xs font-medium text-slate-300 mb-1">Last week's carryover amount</label>
+          <div class="relative">
+            <span class="absolute inset-y-0 left-0 pl-3 flex items-center text-slate-400 text-xs">$</span>
+            <input id="carryover-amount" type="number" min="0" step="any" placeholder="0.00" class="w-full bg-slate-900 border border-slate-700 text-slate-200 text-xs rounded-lg pl-7 p-2.5 focus:ring-red-500 focus:border-red-500 transition-colors">
+          </div>
+          <div class="bg-slate-900/60 rounded-lg p-2.5 mt-2 border border-slate-700/60 text-xs space-y-1">
+            <div class="flex justify-between items-center text-slate-400">
+              <span>Weekly Pot:</span>
+              <span id="preview-weekly" class="font-bold text-sky-400">$0.00</span>
+            </div>
+            <div class="flex justify-between items-center text-slate-400">
+              <span>Carryover Amount:</span>
+              <span id="preview-total" class="font-bold text-purple-400">$0.00</span>
+            </div>
+            <div class="flex justify-between items-center text-slate-300 pt-1 border-t border-slate-800">
+              <span class="font-medium">Winner Share:</span>
+              <span id="payout-preview" class="font-bold text-emerald-400">$0.00</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="flex items-center space-x-3 pt-2">
+          <input id="exclude-winners" type="checkbox" checked class="w-4 h-4 text-red-600 bg-slate-900 border-slate-700 rounded focus:ring-red-500">
+          <label for="exclude-winners" class="text-xs text-slate-300 select-none">
+            Exclude previously drawn members in this session
+          </label>
+        </div>
+
+        <div class="flex items-center space-x-3">
+          <input id="sound-effects" type="checkbox" checked class="w-4 h-4 text-red-600 bg-slate-900 border-slate-700 rounded focus:ring-red-500">
+          <label for="sound-effects" class="text-xs text-slate-300 select-none">
+            Enable Sound Effects
+          </label>
+        </div>
+      </div>
+    </section>
+
+    <!-- Main Spinner Area & Winner Display -->
+    <section id="display-col" class="lg:col-span-2 space-y-6">
+      
+      <!-- Display Box -->
+      <div id="display-box" class="bg-slate-800 rounded-xl p-8 border border-slate-700 shadow-xl flex flex-col items-center justify-center min-h-[380px] text-center relative overflow-hidden">
+        
+        <!-- Curling Stone Decorative Background Element -->
+        <div class="absolute -right-16 -bottom-16 opacity-5 pointer-events-none text-slate-100">
+          <i class="fa-solid fa-circle-dot text-[260px]"></i>
+        </div>
+
+        <!-- Idle State -->
+        <div id="display-idle" class="space-y-4 relative z-10">
+          <div class="w-20 h-20 mx-auto bg-slate-700/50 rounded-full flex items-center justify-center text-slate-400 text-3xl">
+            <i class="fa-solid fa-trophy"></i>
+          </div>
+          <h3 class="text-xl font-bold text-slate-200">Ready to Draw</h3>
+          <p id="idle-message" class="text-xs text-slate-400 max-w-sm mx-auto">Click "Draw Member" to randomly select a member from the live roster.</p>
+        </div>
+
+        <!-- Shuffling State -->
+        <div id="display-shuffling" class="hidden space-y-4 w-full relative z-10">
+          <div class="text-xs uppercase tracking-widest text-red-400 font-bold">Selecting Member...</div>
+          <div id="shuffle-name" class="text-3xl md:text-5xl font-extrabold text-amber-300 tracking-tight h-16 flex items-center justify-center">
+            ---
+          </div>
+          <div id="shuffle-meta" class="text-sm text-slate-400">
+            Scanning roster...
+          </div>
+        </div>
+
+        <!-- Winner / Draw Outcome State -->
+        <div id="display-winner" class="hidden space-y-5 w-full animate-pulse-ring relative z-10">
+          
+          <div id="winner-badge" class="inline-block px-4 py-1.5 rounded-full text-xs font-bold tracking-wider uppercase">
+            <i class="fa-solid fa-award mr-1"></i> Winner Selected!
+          </div>
+
+          <div class="space-y-2">
+            <h2 id="winner-name" class="text-4xl md:text-5xl font-black text-white tracking-tight">
+              Member Name
+            </h2>
+          </div>
+
+          <div id="winner-details" class="grid grid-cols-2 md:grid-cols-4 gap-3 bg-slate-900/80 p-4 rounded-xl border border-slate-700/60 max-w-xl mx-auto text-left text-xs">
+            <div>
+              <span class="text-slate-500 block">Paid Status:</span>
+              <span id="winner-paid" class="font-bold">Yes</span>
+            </div>
+            <div>
+              <span class="text-slate-500 block">Weekly Pot:</span>
+              <span id="winner-weekly" class="font-bold text-sky-400">$0.00</span>
+            </div>
+            <div>
+              <span class="text-slate-500 block">Carryover Amount:</span>
+              <span id="winner-carryover" class="font-bold text-purple-400">$0.00</span>
+            </div>
+            <div>
+              <span class="text-slate-500 block">Winner Share:</span>
+              <span id="winner-prize" class="font-bold">$0.00</span>
+            </div>
+          </div>
+
+          <!-- Next Week's Carryover Banner (Displayed if Non-Paid Member Drawn) -->
+          <div id="next-carryover-container" class="hidden bg-amber-500/10 border border-amber-500/30 rounded-xl p-4 max-w-xl mx-auto text-center space-y-1">
+            <span class="text-xs text-amber-300 font-semibold tracking-wider uppercase block">
+              <i class="fa-solid fa-arrow-right-to-city mr-1"></i> Next Week's Carryover Amount
+            </span>
+            <span id="winner-next-carryover" class="text-3xl font-black text-amber-400 block">$0.00</span>
+            <span id="next-carryover-breakdown" class="text-[11px] text-slate-400 block">
+              (Equal to Winner Share: Weekly Pot × 50% + Carryover Amount)
+            </span>
+          </div>
+
+        </div>
+
+        <!-- Action Button -->
+        <div class="mt-8 z-10 w-full max-w-xs relative z-20 controller-only">
+          <button id="draw-btn" disabled class="w-full py-4 px-6 bg-red-600 hover:bg-red-500 disabled:bg-slate-700 disabled:text-slate-500 text-white font-bold text-lg rounded-xl shadow-lg transition duration-200 transform hover:-translate-y-0.5 active:translate-y-0 flex items-center justify-center space-x-3">
+            <i class="fa-solid fa-dice"></i>
+            <span>Draw Member</span>
+          </button>
+        </div>
+
+      </div>
+
+      <!-- Winner Log Table -->
+      <div class="bg-slate-800 rounded-xl p-6 border border-slate-700 shadow-md relative z-30 controller-only">
+        <div class="flex justify-between items-center mb-4">
+          <h3 class="text-md font-bold text-white flex items-center gap-2">
+            <i class="fa-solid fa-clock-rotate-left text-amber-400"></i> Draw History
+          </h3>
+          <button id="clear-history-btn" class="text-xs text-slate-400 hover:text-red-400 transition-colors relative z-40">
+            Clear History
+          </button>
+        </div>
+
+        <div class="overflow-x-auto">
+          <table class="w-full text-left text-xs text-slate-300">
+            <thead class="bg-slate-900/60 text-slate-400 uppercase tracking-wider text-[10px]">
+              <tr>
+                <th class="py-2.5 px-3">Time</th>
+                <th class="py-2.5 px-3">Paid</th>
+                <th class="py-2.5 px-3">Name</th>
+                <th class="py-2.5 px-3">Weekly Pot</th>
+                <th class="py-2.5 px-3">Carryover Amount</th>
+                <th class="py-2.5 px-3">Result / Prize</th>
+              </tr>
+            </thead>
+            <tbody id="history-tbody" class="divide-y divide-slate-700/50">
+              <tr>
+                <td colspan="6" class="py-4 text-center text-slate-500">No draws completed yet.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+    </section>
+
+  </main>
+
+  <!-- Toast message (used for Cast help / errors on the controller) -->
+  <div id="toast" class="hidden controller-only fixed bottom-4 right-4 z-50 max-w-sm bg-slate-800 border border-slate-600 rounded-xl p-4 pr-9 text-xs text-slate-200 shadow-2xl">
+    <button id="toast-close" type="button" class="absolute top-2 right-3 text-slate-400 hover:text-white" aria-label="Close">
+      <i class="fa-solid fa-xmark"></i>
+    </button>
+    <div id="toast-body"></div>
+  </div>
+
+  <script>
+    // Google Sheets Published CSV Source (Member Data)
+    const DEFAULT_SHEET_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQYi7Nd8CnSa82uPhUt_OcDbahQeMHKaG5wtMVa4VHZgDX0KTXcPK55HceuxCB-9g11pmkpt9ZI7kDI/pub?output=csv";
+    
+    // Draw Results V2 Google Sheets Dataset CSV Source
+    const CARRYOVER_SHEET_URL = "https://docs.google.com/spreadsheets/d/1FyZH_Y4ttMUx20S2K0OkvxCjo4Gb8Cyp2XGgAGOQ1uU/export?format=csv";
+
+    // ------------------------------------------------------------------
+    // TV MODE DETECTION
+    // When this page is opened on the Chromecast, its URL ends in
+    // ?display=tv. In that mode the page is a "display only" screen:
+    // it never loads sheets, never draws, and never logs results —
+    // it just shows whatever the controller laptop sends it.
+    // ------------------------------------------------------------------
+    const IS_TV = new URLSearchParams(location.search).get('display') === 'tv';
+    if (IS_TV) document.body.classList.add('tv-mode');
+
+    // App State
+    let members = [];
+    let winnersList = [];
+    let isDrawing = false;
+    let nextDrawNum = 1;
+
+    // Audio Synthesizer
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+    function playTickSound() {
+      if (!document.getElementById('sound-effects').checked) return;
+      try {
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(600 + Math.random() * 200, audioCtx.currentTime);
+        gain.gain.setValueAtTime(0.05, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.05);
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start();
+        osc.stop(audioCtx.currentTime + 0.05);
+      } catch (e) {}
+    }
+
+    function playWinnerSound() {
+      if (!document.getElementById('sound-effects').checked) return;
+      try {
+        const notes = [261.63, 329.63, 392.00, 523.25];
+        notes.forEach((freq, idx) => {
+          const osc = audioCtx.createOscillator();
+          const gain = audioCtx.createGain();
+          osc.type = 'triangle';
+          osc.frequency.value = freq;
+          gain.gain.setValueAtTime(0.1, audioCtx.currentTime + idx * 0.1);
+          gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + idx * 0.1 + 0.6);
+          osc.connect(gain);
+          gain.connect(audioCtx.destination);
+          osc.start(audioCtx.currentTime + idx * 0.1);
+          osc.stop(audioCtx.currentTime + idx * 0.1 + 0.6);
+        });
+      } catch (e) {}
+    }
+
+    // CSV Parsing Logic for Member Data
+    function parseCSVData(csvString) {
+      Papa.parse(csvString, {
+        header: true,
+        skipEmptyLines: true,
+        complete: function(results) {
+          members = results.data.map((row, idx) => {
+            const rawPaid = (row['Paid'] || row['Paid Annual Dues'] || (row['Dues Amt Paid'] ? 'Yes' : '') || 'No').toString().trim();
+            const paidVal = rawPaid.toLowerCase() === 'yes' || rawPaid.toLowerCase() === 'true' ? 'Yes' : 'No';
+
+            return {
+              id: row['ID'] || `id_${idx + 1}`,
+              firstName: row['First Name'] || '',
+              lastName: row['Last Name'] || '',
+              fullName: `${row['First Name'] || ''} ${row['Last Name'] || ''}`.trim() || 'Unknown Member',
+              paid: paidVal,
+              email: row['Email'] || 'N/A',
+              city: row['City'] || 'N/A'
+            };
+          }).filter(m => m.fullName.length > 0);
+
+          updateStats();
+          document.getElementById('file-status').innerHTML = `
+            <i class="fa-solid fa-circle-check text-emerald-400"></i>
+            <span class="text-emerald-400 font-semibold">Loaded ${members.length} members from Google Sheets.</span>
+          `;
+        },
+        error: function(err) {
+          alert('Error parsing sheet CSV: ' + err.message);
+        }
+      });
+    }
+
+    // Fetch Initial Carryover Amount & Draw Number automatically from Draw Results V2
+    async function fetchLatestCarryover() {
+      try {
+        const response = await fetch(CARRYOVER_SHEET_URL);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const csvData = await response.text();
+
+        Papa.parse(csvData, {
+          header: true,
+          skipEmptyLines: true,
+          complete: function(results) {
+            if (results.data && results.data.length > 0) {
+              const lastRow = results.data[results.data.length - 1];
+              
+              // Extract Last Draw # and increment by 1
+              if (lastRow['Draw #'] !== undefined && lastRow['Draw #'] !== null && lastRow['Draw #'] !== '') {
+                const parsedDrawNum = parseInt(lastRow['Draw #'].toString().trim(), 10);
+                if (!isNaN(parsedDrawNum)) {
+                  nextDrawNum = parsedDrawNum + 1;
+                }
+              }
+
+              // Extract Carryover Amount
+              let foundVal = null;
+              const targetKeys = ['Carryover Amount', 'Carryover', 'Next Carryover Amount', 'Amount', 'Carryover ($)'];
+              for (let key of targetKeys) {
+                if (lastRow[key] !== undefined && lastRow[key] !== null && lastRow[key] !== '') {
+                  foundVal = lastRow[key];
+                  break;
+                }
+              }
+
+              if (foundVal === null) {
+                const rowValues = Object.values(lastRow);
+                for (let v of rowValues) {
+                  const cleaned = v.toString().replace(/[\$,]/g, '').trim();
+                  if (!isNaN(cleaned) && cleaned !== '') {
+                    foundVal = cleaned;
+                    break;
+                  }
+                }
+              }
+
+              if (foundVal !== null) {
+                const num = parseFloat(foundVal.toString().replace(/[\$,]/g, '')) || 0;
+                document.getElementById('carryover-amount').value = num.toFixed(2);
+              }
+
+              updateStats();
+            }
+          }
+        });
+      } catch (err) {
+        console.warn("Unable to automatically load carryover CSV from Draw Results V2:", err);
+      }
+    }
+
+    // Send draw outcome data to Google Apps Script Web App
+    async function sendDrawUpdateToSheet(drawData) {
+      const inputUrl = document.getElementById('web-app-url-input')?.value.trim();
+      const webAppUrl = inputUrl || "https://script.google.com/macros/s/AKfycbzC1OsTpoEyC-57SdG5xRNJEc98KHbpM3yQ5qW9C1iR-Wst4BUzUwKefpKJX5ZMNeJ2YQ/exec";
+      const statusEl = document.getElementById('file-status');
+
+      if (webAppUrl) {
+        localStorage.setItem('acc_5050_webapp_url', webAppUrl);
+      } else {
+        statusEl.innerHTML = `<i class="fa-solid fa-circle-check text-emerald-400"></i> <span class="text-emerald-400">Draw complete!</span>`;
+        return;
+      }
+
+      statusEl.innerHTML = `<i class="fa-solid fa-spinner fa-spin text-sky-400"></i> <span>Logging Draw #${drawData.drawNum} to Google Sheet...</span>`;
+
+      const payload = {
+        drawNum: drawData.drawNum,
+        drawDate: new Date().toISOString().split('T')[0],
+        firstName: drawData.firstName,
+        lastName: drawData.lastName,
+        email: drawData.email,
+        winnerAmount: drawData.isPaid ? drawData.winnerShareVal : "$0.00",
+        carryoverAmount: drawData.nextCarryoverVal
+      };
+
+      try {
+        await fetch(webAppUrl, {
+          method: "POST",
+          mode: "no-cors",
+          headers: { "Content-Type": "text/plain" },
+          body: JSON.stringify(payload)
+        });
+
+        statusEl.innerHTML = `<i class="fa-solid fa-circle-check text-emerald-400"></i> <span class="text-emerald-400 font-semibold">Draw #${drawData.drawNum} updated in Google Sheet!</span>`;
+      } catch (err) {
+        statusEl.innerHTML = `<i class="fa-solid fa-triangle-exclamation text-red-400"></i> <span class="text-red-400">Failed to log draw result to Google Sheet.</span>`;
+        console.error("Error updating sheet:", err);
+      }
+    }
+
+    // Fetch Member Data from Google Sheets
+    async function fetchGoogleSheet(url) {
+      if (!url) {
+        alert("Please enter a valid published Google Sheets CSV URL.");
+        return;
+      }
+      
+      const statusEl = document.getElementById('file-status');
+      statusEl.innerHTML = `<i class="fa-solid fa-spinner fa-spin text-amber-400"></i> <span>Syncing Google Sheet...</span>`;
+
+      try {
+        const response = await fetch(url);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const csvData = await response.text();
+        
+        localStorage.setItem('acc_5050_sheet_url', url);
+        parseCSVData(csvData);
+      } catch (err) {
+        statusEl.innerHTML = `<i class="fa-solid fa-triangle-exclamation text-red-400"></i> <span class="text-red-400">Failed to load sheet. Check link permissions.</span>`;
+        alert("Failed to load Google Sheet. Ensure the link is published to web as CSV and access is public.");
+      }
+    }
+
+    // Get Eligible Members Pool (ALL members included)
+    function getEligibleMembers() {
+      const excludePrevious = document.getElementById('exclude-winners').checked;
+      
+      return members.filter(m => {
+        const matchWinner = !excludePrevious || !winnersList.some(w => w.id === m.id);
+        return matchWinner;
+      });
+    }
+
+    // Update Stats Bar & UI Calculations
+    function updateStats() {
+      const total = members.length;
+      const eligible = getEligibleMembers().length;
+      
+      // Calculate Weekly Pot: (total number of 'paid' members X $44) / 22
+      const paidMembersCount = members.filter(m => m.paid.toLowerCase() === 'yes').length;
+      const weeklyPotVal = (paidMembersCount * 44) / 22;
+
+      // Carryover Amount calculations
+      const carryoverInputVal = parseFloat(document.getElementById('carryover-amount').value) || 0;
+      
+      // Winner Share = (Weekly Pot X 50%) + Carryover Amount
+      const prizeVal = (weeklyPotVal * 0.5) + carryoverInputVal;
+
+      // Bundle the numbers so the same values can be shown here AND on the TV
+      const stats = {
+        total: total,
+        eligible: eligible,
+        drawNum: nextDrawNum,
+        weekly: weeklyPotVal,
+        carryover: carryoverInputVal,
+        prize: prizeVal,
+        sound: document.getElementById('sound-effects').checked
+      };
+
+      applyStats(stats);
+      castSend({ type: 'stats', stats: stats });   // keep the TV's header in sync
+
+      const drawBtn = document.getElementById('draw-btn');
+      if (!isDrawing) {
+        drawBtn.disabled = (eligible === 0);
+      }
+    }
+
+    // Write a stats bundle into the page (used by the laptop and by the TV)
+    function applyStats(s) {
+      document.getElementById('stat-total').innerText = s.total;
+      document.getElementById('stat-eligible').innerText = s.eligible;
+      document.getElementById('stat-draw-num').innerText = s.drawNum;
+
+      const elWeeklyPot = document.getElementById('stat-weekly-pot');
+      if (elWeeklyPot) {
+        elWeeklyPot.innerText = `$${s.weekly.toFixed(2)}`;
+      }
+
+      document.getElementById('stat-pot').innerText = `$${s.carryover.toFixed(2)}`;
+      document.getElementById('stat-prize').innerText = `$${s.prize.toFixed(2)}`;
+
+      document.getElementById('preview-weekly').innerText = `$${s.weekly.toFixed(2)}`;
+      document.getElementById('preview-total').innerText = `$${s.carryover.toFixed(2)}`;
+      document.getElementById('payout-preview').innerText = `$${s.prize.toFixed(2)}`;
+
+      // The TV follows the laptop's "Enable Sound Effects" setting
+      if (IS_TV && typeof s.sound === 'boolean') {
+        document.getElementById('sound-effects').checked = s.sound;
+      }
+    }
+
+    // Start Random Selection Animation
+    function startDraw() {
+      const eligible = getEligibleMembers();
+      if (eligible.length === 0) {
+        alert('No eligible members available for the draw!');
+        return;
+      }
+
+      if (audioCtx.state === 'suspended') {
+        audioCtx.resume();
+      }
+
+      isDrawing = true;
+      document.getElementById('draw-btn').disabled = true;
+
+      let speed = 50;
+      let counter = 0;
+      const totalIterations = 40;
+
+      function shuffleStep() {
+        const randomIndex = Math.floor(Math.random() * eligible.length);
+        const candidate = eligible[randomIndex];
+        const meta = `Paid Status: ${candidate.paid}`;
+
+        renderShuffle(candidate.fullName, meta);
+        castSend({ type: 'shuffle', name: candidate.fullName, meta: meta });   // TV spins along
+
+        counter++;
+        if (counter < totalIterations) {
+          if (counter > totalIterations - 15) {
+            speed += 25;
+          }
+          setTimeout(shuffleStep, speed);
+        } else {
+          finalizeDraw(candidate);
+        }
+      }
+
+      shuffleStep();
+    }
+
+    // Show one "spinning" name (used by the laptop and by the TV)
+    function renderShuffle(name, meta) {
+      document.getElementById('display-idle').classList.add('hidden');
+      document.getElementById('display-winner').classList.add('hidden');
+      document.getElementById('display-shuffling').classList.remove('hidden');
+
+      document.getElementById('shuffle-name').innerText = name;
+      document.getElementById('shuffle-meta').innerText = meta;
+      playTickSound();
+    }
+
+    function finalizeDraw(drawnMember) {
+      isDrawing = false;
+      const paidMembersCount = members.filter(m => m.paid.toLowerCase() === 'yes').length;
+      const weeklyPotVal = (paidMembersCount * 44) / 22;
+      const carryoverVal = parseFloat(document.getElementById('carryover-amount').value) || 0;
+      
+      // Winner Share = (Weekly Pot X 50%) + Carryover Amount
+      const winnerShareVal = (weeklyPotVal * 0.5) + carryoverVal;
+      
+      const isPaid = drawnMember.paid.toLowerCase() === 'yes';
+      const prizeVal = isPaid ? winnerShareVal : 0;
+
+      // Next Week's Carryover Amount = Winner Share (if unpaid) or $0.00 (if paid)
+      const nextCarryoverVal = isPaid ? 0 : winnerShareVal;
+      
+      const formattedWeekly = `$${weeklyPotVal.toFixed(2)}`;
+      const formattedCarryover = `$${carryoverVal.toFixed(2)}`;
+      const formattedWinnerShare = `$${winnerShareVal.toFixed(2)}`;
+      const formattedPrize = isPaid ? formattedWinnerShare : '$0.00';
+      const formattedNextCarryover = `$${nextCarryoverVal.toFixed(2)}`;
+
+      const drawRecord = {
+        ...drawnMember,
+        drawNum: nextDrawNum,
+        isPaid: isPaid,
+        weeklyVal: formattedWeekly,
+        carryoverVal: formattedCarryover,
+        winnerShareVal: formattedWinnerShare,
+        prizeVal: isPaid ? formattedPrize : `No Winner (${formattedNextCarryover} Carryover)`,
+        nextCarryoverVal: formattedNextCarryover,
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+      };
+
+      winnersList.unshift(drawRecord);
+
+      // Only the display-safe fields go to the TV (no emails etc.)
+      const displayData = {
+        fullName: drawnMember.fullName,
+        paid: drawnMember.paid,
+        isPaid: isPaid,
+        weekly: formattedWeekly,
+        carryover: formattedCarryover,
+        prize: formattedPrize,
+        nextCarryover: formattedNextCarryover
+      };
+
+      renderWinnerDisplay(displayData);
+      castSend({ type: 'winner', data: displayData });
+
+      renderHistory();
+      updateStats();
+      sendDrawUpdateToSheet(drawRecord);
+    }
+
+    // Show the draw result (used by the laptop and by the TV)
+    function renderWinnerDisplay(d) {
+      document.getElementById('display-idle').classList.add('hidden');
+      document.getElementById('display-shuffling').classList.add('hidden');
+      document.getElementById('display-winner').classList.remove('hidden');
+
+      document.getElementById('winner-name').innerText = d.fullName;
+      
+      const paidEl = document.getElementById('winner-paid');
+      paidEl.innerText = d.paid;
+      paidEl.className = d.isPaid ? "font-bold text-emerald-400" : "font-bold text-red-400";
+
+      document.getElementById('winner-weekly').innerText = d.weekly;
+      document.getElementById('winner-carryover').innerText = d.carryover;
+      
+      const prizeEl = document.getElementById('winner-prize');
+      prizeEl.innerText = d.prize;
+      prizeEl.className = d.isPaid ? "font-bold text-emerald-400" : "font-bold text-slate-400";
+
+      const badgeEl = document.getElementById('winner-badge');
+      const nextCarryoverBox = document.getElementById('next-carryover-container');
+
+      if (d.isPaid) {
+        badgeEl.className = "inline-block px-4 py-1.5 bg-emerald-500/20 border border-emerald-500/40 rounded-full text-emerald-400 text-xs font-bold tracking-wider uppercase";
+        badgeEl.innerHTML = `<i class="fa-solid fa-award mr-1"></i> Winner Selected!`;
+        nextCarryoverBox.classList.add('hidden');
+        
+        playWinnerSound();
+        confetti({
+          particleCount: 120,
+          spread: 70,
+          origin: { y: 0.6 }
+        });
+      } else {
+        badgeEl.className = "inline-block px-4 py-1.5 bg-amber-500/20 border border-amber-500/40 rounded-full text-amber-400 text-xs font-bold tracking-wider uppercase";
+        badgeEl.innerHTML = `<i class="fa-solid fa-triangle-exclamation mr-1"></i> Non-Paid Member Drawn — Pot Carries Over!`;
+        
+        document.getElementById('winner-next-carryover').innerText = d.nextCarryover;
+        document.getElementById('next-carryover-breakdown').innerText = `(Equal to Winner Share: Weekly Pot × 50% + Carryover Amount)`;
+        nextCarryoverBox.classList.remove('hidden');
+      }
+    }
+
+    // Render History Table
+    function renderHistory() {
+      const tbody = document.getElementById('history-tbody');
+      if (winnersList.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="6" class="py-4 text-center text-slate-500">No draws completed yet.</td></tr>`;
+        return;
+      }
+
+      tbody.innerHTML = winnersList.map(w => `
+        <tr class="hover:bg-slate-750/50">
+          <td class="py-2.5 px-3 text-slate-400">${w.timestamp}</td>
+          <td class="py-2.5 px-3 font-semibold ${w.isPaid ? 'text-emerald-400' : 'text-red-400'}">${w.paid}</td>
+          <td class="py-2.5 px-3 font-bold text-white">${w.fullName}</td>
+          <td class="py-2.5 px-3 text-sky-400 font-semibold">${w.weeklyVal}</td>
+          <td class="py-2.5 px-3 text-purple-400 font-semibold">${w.carryoverVal}</td>
+          <td class="py-2.5 px-3 ${w.isPaid ? 'text-emerald-400 font-bold' : 'text-amber-400 font-semibold'}">${w.prizeVal}</td>
+        </tr>
+      `).join('');
+    }
+
+    // ==================================================================
+    // GOOGLE CAST
+    // ------------------------------------------------------------------
+    // How it works:
+    //  1. The Cast button asks Chrome to open this same page, with
+    //     ?display=tv added, on a Chromecast (Chrome's Presentation API,
+    //     which uses Google Cast under the hood).
+    //  2. The laptop stays the "controller": it loads the sheets, runs
+    //     the draw and logs results, exactly as before.
+    //  3. Every time the laptop's display changes (stats, spinning
+    //     names, winner), it sends a small JSON message to the TV, and
+    //     the TV redraws itself using the same render functions.
+    // ==================================================================
+    const CAST_SESSION_KEY = 'acc_5050_cast_session_id';
+    let castRequest = null;      // the PresentationRequest for the TV page
+    let castConnection = null;   // the live connection to the TV (if any)
+    let lastStatsMsg = null;     // latest stats, re-sent when a TV connects
+    let lastDisplayMsg = null;   // latest shuffle/winner screen, re-sent when a TV connects
+
+    // Send a message to the TV (does nothing if we are not casting)
+    function castSend(msg) {
+      if (IS_TV) return;   // the TV never sends anything back
+
+      // Remember the latest state so a TV that connects later catches up
+      if (msg.type === 'stats') lastStatsMsg = msg;
+      else lastDisplayMsg = msg;
+
+      if (castConnection && castConnection.state === 'connected') {
+        try {
+          castConnection.send(JSON.stringify(msg));
+        } catch (e) {
+          console.warn('Could not send to Cast device:', e);
+        }
+      }
+    }
+
+    // Change how the Cast button looks: 'idle' | 'connecting' | 'casting' | 'unsupported'
+    function setCastUi(state) {
+      const btn = document.getElementById('cast-btn');
+      const label = document.getElementById('cast-label');
+      const icon = document.getElementById('cast-icon');
+      const base = 'controller-only flex items-center gap-2 px-4 py-2 rounded-lg border text-xs md:text-sm font-semibold transition ';
+
+      const looks = {
+        idle:        { cls: 'border-slate-600 bg-slate-900/60 text-slate-200 hover:border-sky-400 hover:text-sky-300', text: 'Cast', icon: 'fa-brands fa-chromecast', title: 'Cast the draw screen to a TV' },
+        connecting:  { cls: 'border-amber-500/50 bg-amber-500/10 text-amber-300', text: 'Connecting…', icon: 'fa-solid fa-spinner fa-spin', title: 'Connecting to Cast device…' },
+        casting:     { cls: 'border-sky-400 bg-sky-500/20 text-sky-300 hover:bg-sky-500/30', text: 'Casting', icon: 'fa-brands fa-chromecast', title: 'Casting to TV — click to stop' },
+        unsupported: { cls: 'border-slate-700 bg-slate-900/60 text-slate-500 hover:text-slate-300', text: 'Cast', icon: 'fa-brands fa-chromecast', title: 'Casting needs Chrome or Edge — click for help' }
+      };
+
+      const look = looks[state] || looks.idle;
+      btn.className = base + look.cls;
+      btn.title = look.title;
+      label.innerText = look.text;
+      icon.className = look.icon;
+    }
+
+    // Small pop-up message in the bottom-right corner
+    function showToast(html, ms = 10000) {
+      const toast = document.getElementById('toast');
+      document.getElementById('toast-body').innerHTML = html;
+      toast.classList.remove('hidden');
+      clearTimeout(showToast._timer);
+      showToast._timer = setTimeout(() => toast.classList.add('hidden'), ms);
+    }
+
+    // Help text shown when the Cast button can't work in this browser/setup
+    function showCastHelp() {
+      const isFile = location.protocol === 'file:';
+      showToast(`
+        <div class="font-bold text-white mb-1"><i class="fa-brands fa-chromecast mr-1"></i> Casting isn't available here</div>
+        <p class="mb-2">${isFile
+          ? 'The Cast button only works when the app is opened from a web address (https://…), not from a file on this computer.'
+          : 'The Cast button needs Google Chrome or Microsoft Edge on a computer.'}</p>
+        <p class="text-slate-400">You can still cast the whole tab: Chrome menu <b>⋮</b> → <b>Cast…</b> → choose your TV.</p>
+      `);
+    }
+
+    // Hook up a new TV connection (from the button, Chrome's menu, or a reconnect)
+    function attachConnection(conn) {
+      if (!conn || castConnection === conn) return;   // already attached
+      castConnection = conn;
+
+      try { localStorage.setItem(CAST_SESSION_KEY, conn.id); } catch (e) {}
+      setCastUi('connecting');
+
+      // When the TV is ready, send it everything it needs to catch up
+      const onConnected = () => {
+        if (castConnection !== conn) return;
+        setCastUi('casting');
+        if (lastStatsMsg) conn.send(JSON.stringify(lastStatsMsg));
+        if (lastDisplayMsg) conn.send(JSON.stringify(lastDisplayMsg));
+      };
+
+      conn.addEventListener('connect', onConnected);
+      if (conn.state === 'connected') onConnected();
+
+      // 'close' = connection dropped (TV may still be showing the page)
+      conn.addEventListener('close', () => {
+        if (castConnection === conn) {
+          castConnection = null;
+          setCastUi('idle');
+        }
+      });
+
+      // 'terminate' = casting fully stopped
+      conn.addEventListener('terminate', () => {
+        if (castConnection === conn) {
+          castConnection = null;
+          setCastUi('idle');
+        }
+        try { localStorage.removeItem(CAST_SESSION_KEY); } catch (e) {}
+      });
+    }
+
+    // What happens when the Cast button is clicked
+    function onCastClick() {
+      // Already casting? Offer to stop.
+      if (castConnection && castConnection.state === 'connected') {
+        if (confirm('Stop casting to the TV?')) {
+          castConnection.terminate();
+        }
+        return;
+      }
+
+      setCastUi('connecting');
+
+      // Opens Chrome's device picker (must be triggered by a click)
+      castRequest.start()
+        .then(attachConnection)
+        .catch(err => {
+          if (!castConnection) setCastUi('idle');
+          if (err.name === 'NotAllowedError' || err.name === 'AbortError') return;   // picker closed
+          if (err.name === 'NotFoundError') {
+            showToast(`<div class="font-bold text-white mb-1">No Cast devices found</div>
+              <p>Make sure the TV / Chromecast is on and on the same Wi-Fi network as this computer.</p>`);
+            return;
+          }
+          showToast(`<div class="font-bold text-white mb-1">Couldn't start casting</div><p>${err.message || err.name}</p>`);
+        });
+    }
+
+    // Set up the Cast button on the laptop (controller)
+    function setupCastController() {
+      const btn = document.getElementById('cast-btn');
+
+      // Presentation API = Chrome / Edge only, and only from a real web address
+      if (!('PresentationRequest' in window) || location.protocol === 'file:') {
+        setCastUi('unsupported');
+        btn.addEventListener('click', showCastHelp);
+        return;
+      }
+
+      // The TV loads this same page with ?display=tv
+      const tvUrl = new URL('?display=tv', location.href).href;
+      castRequest = new PresentationRequest([tvUrl]);
+
+      // Also lets Chrome's own "Cast…" menu send the TV view instead of mirroring the tab
+      navigator.presentation.defaultRequest = castRequest;
+
+      // Fires whenever a TV connection is established (any route)
+      castRequest.addEventListener('connectionavailable', e => attachConnection(e.connection));
+
+      // Show a hint on the button when no Cast devices are visible
+      castRequest.getAvailability()
+        .then(availability => {
+          const refresh = () => {
+            if (!castConnection) {
+              document.getElementById('cast-btn').title = availability.value
+                ? 'Cast the draw screen to a TV'
+                : 'No Cast devices found on this network yet';
+            }
+          };
+          refresh();
+          availability.addEventListener('change', refresh);
+        })
+        .catch(() => { /* Availability checking isn't supported everywhere — the button still works */ });
+
+      btn.addEventListener('click', onCastClick);
+
+      // If the laptop page was refreshed while casting, pick the TV back up
+      let savedId = null;
+      try { savedId = localStorage.getItem(CAST_SESSION_KEY); } catch (e) {}
+      if (savedId) {
+        castRequest.reconnect(savedId)
+          .then(attachConnection)
+          .catch(() => { try { localStorage.removeItem(CAST_SESSION_KEY); } catch (e) {} });
+      }
+    }
+
+    // Set up the TV (receiver) side: listen for messages from the laptop
+    function setupCastReceiver() {
+      document.getElementById('display-idle').querySelector('h3').innerText = 'Next Draw Coming Up';
+      document.getElementById('idle-message').innerText = 'Stay tuned — the 50/50 draw will appear here.';
+
+      if (!navigator.presentation || !navigator.presentation.receiver) {
+        // Opened ?display=tv in a normal browser tab — nothing will be sent to it
+        console.info('TV display mode: not running on a Cast device, waiting for nothing.');
+        return;
+      }
+
+      const listenTo = conn => {
+        conn.addEventListener('message', e => {
+          try {
+            handleCastMessage(JSON.parse(e.data));
+          } catch (err) {
+            console.warn('Bad Cast message:', err);
+          }
+        });
+      };
+
+      navigator.presentation.receiver.connectionList.then(list => {
+        list.connections.forEach(listenTo);
+        list.addEventListener('connectionavailable', e => listenTo(e.connection));
+      });
+    }
+
+    // TV: update the screen based on what the laptop sent
+    function handleCastMessage(msg) {
+      switch (msg.type) {
+        case 'stats':   applyStats(msg.stats); break;
+        case 'shuffle': renderShuffle(msg.name, msg.meta); break;
+        case 'winner':  renderWinnerDisplay(msg.data); break;
+      }
+    }
+
+    // Toast close button
+    document.getElementById('toast-close').addEventListener('click', () => {
+      document.getElementById('toast').classList.add('hidden');
+    });
+
+    // Initialize Page
+    window.addEventListener('DOMContentLoaded', () => {
+      // TV screen: display only — no sheet loading, no drawing, no logging
+      if (IS_TV) {
+        setupCastReceiver();
+        return;
+      }
+
+      document.getElementById('sheets-url-input').value = DEFAULT_SHEET_URL;
+      
+      const savedWebAppUrl = localStorage.getItem('acc_5050_webapp_url');
+      if (savedWebAppUrl) {
+        document.getElementById('web-app-url-input').value = savedWebAppUrl;
+      }
+
+      fetchGoogleSheet(DEFAULT_SHEET_URL);
+      fetchLatestCarryover();
+      setupCastController();
+    });
+
+    // Event Listeners
+    document.getElementById('sync-sheets-btn').addEventListener('click', () => {
+      const url = document.getElementById('sheets-url-input').value.trim();
+      fetchGoogleSheet(url);
+    });
+
+    document.getElementById('carryover-amount').addEventListener('input', updateStats);
+    document.getElementById('exclude-winners').addEventListener('change', updateStats);
+    document.getElementById('sound-effects').addEventListener('change', updateStats);   // so the TV follows the sound setting
+    document.getElementById('draw-btn').addEventListener('click', startDraw);
+    document.getElementById('clear-history-btn').addEventListener('click', () => {
+      if (confirm('Clear draw history log?')) {
+        winnersList = [];
+        renderHistory();
+        updateStats();
+      }
+    });
+  </script>
+</body>
+</html>
