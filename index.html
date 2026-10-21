@@ -5,6 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Almonte Curling Club - 50/50 Draw App</title>
   <!-- v2.3: adds Google Cast support (Cast button in header + TV display mode) -->
+  <!-- v2.4: official Google Cast SDK (works in Chrome on Android too). Set CAST_APP_ID — see CAST_SETUP.md -->
+  <!-- Receiver URL to register in the Cast Developer Console: <this page's address>?display=tv -->
   <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
   <!-- PapaParse for CSV Parsing -->
@@ -307,6 +309,18 @@
     const CARRYOVER_SHEET_URL = "https://docs.google.com/spreadsheets/d/1FyZH_Y4ttMUx20S2K0OkvxCjo4Gb8Cyp2XGgAGOQ1uU/export?format=csv";
 
     // ------------------------------------------------------------------
+    // GOOGLE CAST SETTINGS  (see CAST_SETUP.md for step-by-step setup)
+    // CAST_APP_ID: paste the 8-character Application ID from the Google
+    //   Cast SDK Developer Console between the quotes, e.g. 'A1B2C3D4'.
+    //   Left empty, the Cast button falls back to the desktop-only
+    //   method from v2.3 (Chrome on a computer only).
+    // CAST_NAMESPACE: the private "channel" the laptop/phone and TV use
+    //   to talk to each other. Leave as is.
+    // ------------------------------------------------------------------
+    const CAST_APP_ID = '';
+    const CAST_NAMESPACE = 'urn:x-cast:ca.almontecurling.draw5050';
+
+    // ------------------------------------------------------------------
     // TV MODE DETECTION
     // When this page is opened on the Chromecast, its URL ends in
     // ?display=tv. In that mode the page is a "display only" screen:
@@ -315,6 +329,10 @@
     // ------------------------------------------------------------------
     const IS_TV = new URLSearchParams(location.search).get('display') === 'tv';
     if (IS_TV) document.body.classList.add('tv-mode');
+
+    // True when this page is running ON a Chromecast / Google TV
+    // (their browser identifies itself with "CrKey").
+    const IS_CAST_DEVICE = /CrKey/.test(navigator.userAgent);
 
     // App State
     let members = [];
@@ -764,7 +782,14 @@
     //     names, winner), it sends a small JSON message to the TV, and
     //     the TV redraws itself using the same render functions.
     // ==================================================================
+    // v2.4: two ways of casting are supported:
+    //  • 'sdk'          — the official Google Cast SDK. Works in Chrome on
+    //                     computers AND Android phones. Needs CAST_APP_ID.
+    //  • 'presentation' — the v2.3 method. Chrome on computers only.
+    //                     Used when CAST_APP_ID is empty or the SDK fails.
+    // ==================================================================
     const CAST_SESSION_KEY = 'acc_5050_cast_session_id';
+    let castMode = null;         // 'sdk' | 'presentation' | null (not available)
     let castRequest = null;      // the PresentationRequest for the TV page
     let castConnection = null;   // the live connection to the TV (if any)
     let lastStatsMsg = null;     // latest stats, re-sent when a TV connects
@@ -778,6 +803,17 @@
       if (msg.type === 'stats') lastStatsMsg = msg;
       else lastDisplayMsg = msg;
 
+      // Google Cast SDK route
+      if (castMode === 'sdk') {
+        const session = cast.framework.CastContext.getInstance().getCurrentSession();
+        if (session) {
+          session.sendMessage(CAST_NAMESPACE, msg)
+            .catch(err => console.warn('Could not send to Cast device:', err));
+        }
+        return;
+      }
+
+      // Presentation API route (v2.3 desktop method)
       if (castConnection && castConnection.state === 'connected') {
         try {
           castConnection.send(JSON.stringify(msg));
@@ -824,8 +860,10 @@
         <div class="font-bold text-white mb-1"><i class="fa-brands fa-chromecast mr-1"></i> Casting isn't available here</div>
         <p class="mb-2">${isFile
           ? 'The Cast button only works when the app is opened from a web address (https://…), not from a file on this computer.'
-          : 'The Cast button needs Google Chrome or Microsoft Edge on a computer.'}</p>
-        <p class="text-slate-400">You can still cast the whole tab: Chrome menu <b>⋮</b> → <b>Cast…</b> → choose your TV.</p>
+          : (window.self !== window.top
+              ? 'The app is running inside another page (an embed), which blocks casting. Open it on its own page instead.'
+              : 'The Cast button needs Google Chrome on a computer or an Android phone. iPhones and iPads are not supported.')}</p>
+        <p class="text-slate-400">On a computer you can still cast the whole tab: Chrome menu <b>⋮</b> → <b>Cast…</b> → choose your TV.</p>
       `);
     }
 
@@ -893,16 +931,127 @@
         });
     }
 
-    // Set up the Cast button on the laptop (controller)
+    // ------------------------------------------------------------------
+    // CONTROLLER SETUP
+    // One click handler for the Cast button that hands off to whichever
+    // casting method ended up working.
+    // ------------------------------------------------------------------
     function setupCastController() {
-      const btn = document.getElementById('cast-btn');
+      document.getElementById('cast-btn').addEventListener('click', () => {
+        if (castMode === 'sdk') onCastSdkClick();
+        else if (castMode === 'presentation') onCastClick();
+        else showCastHelp();
+      });
 
-      // Presentation API = Chrome / Edge only, and only from a real web address
-      if (!('PresentationRequest' in window) || location.protocol === 'file:') {
-        setCastUi('unsupported');
-        btn.addEventListener('click', showCastHelp);
+      if (CAST_APP_ID) {
+        setupCastSdk();            // preferred: works on computers and Android
+      } else {
+        setupPresentationCast();   // no App ID yet: desktop-only method
+      }
+    }
+
+    // Load the Google Cast SDK and get it ready to use
+    function setupCastSdk() {
+      // Google calls this function once its Cast script has loaded.
+      // isAvailable is false on browsers that can't cast (e.g. iPhone, Firefox).
+      window['__onGCastApiAvailable'] = function (isAvailable) {
+        if (!isAvailable) {
+          setupPresentationCast();   // try the desktop method instead
+          return;
+        }
+
+        castMode = 'sdk';
+        setCastUi('idle');
+
+        const ctx = cast.framework.CastContext.getInstance();
+        ctx.setOptions({
+          receiverApplicationId: CAST_APP_ID,
+          // Re-join an existing cast if this page is refreshed
+          autoJoinPolicy: chrome.cast.AutoJoinPolicy.ORIGIN_SCOPED
+        });
+
+        // Keep the button in step with what the Cast session is doing
+        const S = cast.framework.SessionState;
+        ctx.addEventListener(cast.framework.CastContextEventType.SESSION_STATE_CHANGED, e => {
+          switch (e.sessionState) {
+            case S.SESSION_STARTING:
+              setCastUi('connecting');
+              break;
+            case S.SESSION_STARTED:
+            case S.SESSION_RESUMED:
+              setCastUi('casting');
+              sendCatchUpToTv();     // show the current screen on the TV right away
+              break;
+            case S.SESSION_START_FAILED:
+            case S.SESSION_ENDED:
+              setCastUi('idle');
+              break;
+          }
+        });
+      };
+
+      // Add Google's Cast sender script to the page
+      const script = document.createElement('script');
+      script.src = 'https://www.gstatic.com/cv/js/sender/v1/cast_sender.js?loadCastFramework=1';
+      script.onerror = () => setupPresentationCast();   // script blocked/offline: fall back
+      document.head.appendChild(script);
+    }
+
+    // Send the latest stats and screen so a freshly connected TV matches the laptop
+    function sendCatchUpToTv() {
+      const session = cast.framework.CastContext.getInstance().getCurrentSession();
+      if (!session) return;
+      if (lastStatsMsg) session.sendMessage(CAST_NAMESPACE, lastStatsMsg).catch(() => {});
+      if (lastDisplayMsg) session.sendMessage(CAST_NAMESPACE, lastDisplayMsg).catch(() => {});
+    }
+
+    // Cast button clicked (Google Cast SDK route)
+    function onCastSdkClick() {
+      const ctx = cast.framework.CastContext.getInstance();
+
+      // Already casting? Offer to stop.
+      if (ctx.getCurrentSession()) {
+        if (confirm('Stop casting to the TV?')) {
+          ctx.endCurrentSession(true);   // true = also close the app on the TV
+        }
         return;
       }
+
+      // Opens the device picker
+      ctx.requestSession().catch(err => {
+        setCastUi('idle');
+        if (err === chrome.cast.ErrorCode.CANCEL) return;   // picker closed
+
+        if (err === chrome.cast.ErrorCode.RECEIVER_UNAVAILABLE) {
+          showToast(`<div class="font-bold text-white mb-1">No Cast devices found</div>
+            <p>Make sure the TV / Chromecast is on and on the same Wi-Fi network as this device.</p>`);
+          return;
+        }
+
+        if (err === chrome.cast.ErrorCode.SESSION_ERROR) {
+          showToast(`<div class="font-bold text-white mb-1">The TV couldn't open the draw app</div>
+            <p class="mb-1">While the Cast app is unpublished, it only runs on Chromecasts registered as test devices.</p>
+            <p class="text-slate-400">Check the device is registered in the Cast Developer Console and has been restarted since (see CAST_SETUP.md).</p>`);
+          return;
+        }
+
+        showToast(`<div class="font-bold text-white mb-1">Couldn't start casting</div><p>${err}</p>`);
+      });
+    }
+
+    // ------------------------------------------------------------------
+    // PRESENTATION API ROUTE (desktop Chrome only — the v2.3 method)
+    // ------------------------------------------------------------------
+    function setupPresentationCast() {
+      // Presentation API = Chrome / Edge only, and only from a real web address
+      if (!('PresentationRequest' in window) || location.protocol === 'file:' || window.self !== window.top) {
+        castMode = null;
+        setCastUi('unsupported');
+        return;
+      }
+
+      castMode = 'presentation';
+      setCastUi('idle');
 
       // The TV loads this same page with ?display=tv
       const tvUrl = new URL('?display=tv', location.href).href;
@@ -929,8 +1078,6 @@
         })
         .catch(() => { /* Availability checking isn't supported everywhere — the button still works */ });
 
-      btn.addEventListener('click', onCastClick);
-
       // If the laptop page was refreshed while casting, pick the TV back up
       let savedId = null;
       try { savedId = localStorage.getItem(CAST_SESSION_KEY); } catch (e) {}
@@ -946,6 +1093,13 @@
       document.getElementById('display-idle').querySelector('h3').innerText = 'Next Draw Coming Up';
       document.getElementById('idle-message').innerText = 'Stay tuned — the 50/50 draw will appear here.';
 
+      // Running on a Chromecast through the Google Cast SDK route
+      if (IS_CAST_DEVICE) {
+        setupCafReceiver();
+        return;
+      }
+
+      // Otherwise: desktop Presentation API route
       if (!navigator.presentation || !navigator.presentation.receiver) {
         // Opened ?display=tv in a normal browser tab — nothing will be sent to it
         console.info('TV display mode: not running on a Cast device, waiting for nothing.');
@@ -966,6 +1120,29 @@
         list.connections.forEach(listenTo);
         list.addEventListener('connectionavailable', e => listenTo(e.connection));
       });
+    }
+
+    // TV (Chromecast): load Google's Cast receiver framework and listen
+    // for messages from the laptop / phone on our private namespace.
+    function setupCafReceiver() {
+      const script = document.createElement('script');
+      script.src = 'https://www.gstatic.com/cast/sdk/libs/caf_receiver/v3/cast_receiver_framework.js';
+      script.onload = () => {
+        const context = cast.framework.CastReceiverContext.getInstance();
+
+        // Must be added BEFORE context.start()
+        context.addCustomMessageListener(CAST_NAMESPACE, e => {
+          const msg = typeof e.data === 'string' ? JSON.parse(e.data) : e.data;
+          handleCastMessage(msg);
+        });
+
+        const options = new cast.framework.CastReceiverOptions();
+        options.customNamespaces = { [CAST_NAMESPACE]: cast.framework.system.MessageType.JSON };
+        options.disableIdleTimeout = true;   // stay on screen between draws (no video playing)
+        context.start(options);
+      };
+      script.onerror = () => console.error('Could not load the Cast receiver framework.');
+      document.head.appendChild(script);
     }
 
     // TV: update the screen based on what the laptop sent
