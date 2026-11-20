@@ -51,7 +51,12 @@
         </div>
         <div class="text-slate-600">|</div>
         <div>
-          <span class="text-slate-400">Carryover Amount:</span> 
+          <span class="text-slate-400">This Week's Pot:</span>
+          <span id="stat-weekly-pot" class="font-bold text-sky-400">$0.00</span>
+        </div>
+        <div class="text-slate-600">|</div>
+        <div>
+          <span class="text-slate-400">Carryover Amount:</span>
           <span id="stat-pot" class="font-bold text-purple-400">$0.00</span>
         </div>
         <div class="text-slate-600">|</div>
@@ -109,7 +114,7 @@
           </div>
           <div class="bg-slate-900/60 rounded-lg p-2.5 mt-2 border border-slate-700/60 text-xs space-y-1">
             <div class="flex justify-between items-center text-slate-400">
-              <span>Weekly Pot:</span>
+              <span>This Week's Pot:</span>
               <span id="preview-weekly" class="font-bold text-sky-400">$0.00</span>
             </div>
             <div class="flex justify-between items-center text-slate-400">
@@ -189,7 +194,7 @@
               <span id="winner-paid" class="font-bold">Yes</span>
             </div>
             <div>
-              <span class="text-slate-500 block">Weekly Pot:</span>
+              <span class="text-slate-500 block">This Week's Pot:</span>
               <span id="winner-weekly" class="font-bold text-sky-400">$0.00</span>
             </div>
             <div>
@@ -209,7 +214,7 @@
             </span>
             <span id="winner-next-carryover" class="text-3xl font-black text-amber-400 block">$0.00</span>
             <span id="next-carryover-breakdown" class="text-[11px] text-slate-400 block">
-              (Equal to Winner Share: Weekly Pot × 50% + Carryover Amount)
+              (Equal to Winner Share: This Week's Pot + Carryover Amount)
             </span>
           </div>
 
@@ -243,7 +248,7 @@
                 <th class="py-2.5 px-3">Time</th>
                 <th class="py-2.5 px-3">Paid</th>
                 <th class="py-2.5 px-3">Name</th>
-                <th class="py-2.5 px-3">Weekly Pot</th>
+                <th class="py-2.5 px-3">This Week's Pot</th>
                 <th class="py-2.5 px-3">Carryover Amount</th>
                 <th class="py-2.5 px-3">Result / Prize</th>
               </tr>
@@ -265,6 +270,9 @@
     // Google Sheets Published CSV Source (Member Data)
     const DEFAULT_SHEET_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQYi7Nd8CnSa82uPhUt_OcDbahQeMHKaG5wtMVa4VHZgDX0KTXcPK55HceuxCB-9g11pmkpt9ZI7kDI/pub?output=csv";
     
+    // This Week's Pot = paid members X this amount
+    const POT_PER_PAID_MEMBER = 1.00;
+
     // Draw Results V2 Google Sheets Dataset CSV Source
     const CARRYOVER_SHEET_URL = "https://docs.google.com/spreadsheets/d/1FyZH_Y4ttMUx20S2K0OkvxCjo4Gb8Cyp2XGgAGOQ1uU/export?format=csv";
 
@@ -480,15 +488,15 @@
       const total = members.length;
       const eligible = getEligibleMembers().length;
       
-      // Calculate Weekly Pot: (total number of 'paid' members X $44) / 22
+      // This Week's Pot: number of 'paid' members X $1.00
       const paidMembersCount = members.filter(m => m.paid.toLowerCase() === 'yes').length;
-      const weeklyPotVal = (paidMembersCount * 44) / 22;
+      const weeklyPotVal = paidMembersCount * POT_PER_PAID_MEMBER;
 
       // Carryover Amount calculations
       const carryoverInputVal = parseFloat(document.getElementById('carryover-amount').value) || 0;
-      
-      // Winner Share = (Weekly Pot X 50%) + Carryover Amount
-      const prizeVal = (weeklyPotVal * 0.5) + carryoverInputVal;
+
+      // Winner Share = This Week's Pot + Carryover Amount
+      const prizeVal = weeklyPotVal + carryoverInputVal;
 
       document.getElementById('stat-total').innerText = total;
       document.getElementById('stat-eligible').innerText = eligible;
@@ -560,11 +568,11 @@
     function finalizeDraw(drawnMember) {
       isDrawing = false;
       const paidMembersCount = members.filter(m => m.paid.toLowerCase() === 'yes').length;
-      const weeklyPotVal = (paidMembersCount * 44) / 22;
+      const weeklyPotVal = paidMembersCount * POT_PER_PAID_MEMBER;
       const carryoverVal = parseFloat(document.getElementById('carryover-amount').value) || 0;
-      
-      // Winner Share = (Weekly Pot X 50%) + Carryover Amount
-      const winnerShareVal = (weeklyPotVal * 0.5) + carryoverVal;
+
+      // Winner Share = This Week's Pot + Carryover Amount
+      const winnerShareVal = weeklyPotVal + carryoverVal;
       
       const isPaid = drawnMember.paid.toLowerCase() === 'yes';
       const prizeVal = isPaid ? winnerShareVal : 0;
@@ -627,7 +635,7 @@
         badgeEl.innerHTML = `<i class="fa-solid fa-triangle-exclamation mr-1"></i> Non-Paid Member Drawn — Pot Carries Over!`;
         
         document.getElementById('winner-next-carryover').innerText = formattedNextCarryover;
-        document.getElementById('next-carryover-breakdown').innerText = `(Equal to Winner Share: Weekly Pot × 50% + Carryover Amount)`;
+        document.getElementById('next-carryover-breakdown').innerText = `(Equal to Winner Share: This Week's Pot + Carryover Amount)`;
         nextCarryoverBox.classList.remove('hidden');
       }
 
