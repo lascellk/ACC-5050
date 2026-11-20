@@ -6,8 +6,6 @@
   <title>Almonte Curling Club - 50/50 Draw App</title>
   <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
-  <!-- PapaParse for CSV Parsing -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
   <!-- Canvas Confetti -->
   <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
   <!-- FontAwesome Icons -->
@@ -83,30 +81,26 @@
     <!-- Controls & Data Input -->
     <section class="lg:col-span-1 space-y-6">
       
-      <!-- Google Sheets Connections -->
+      <!-- Members & results, loaded from the draw server -->
       <div class="bg-slate-800 rounded-xl p-6 border border-slate-700 shadow-md space-y-4">
         <h2 class="text-lg font-semibold text-white flex items-center gap-2">
-          <i class="fa-solid fa-table text-emerald-400"></i> Google Sheets Live Data
+          <i class="fa-solid fa-users text-emerald-400"></i> Members
         </h2>
-        
-        <div>
-          <label class="block text-xs font-medium text-slate-300 mb-1">Member Data URL</label>
-          <input id="sheets-url-input" type="url" placeholder="https://docs.google.com/spreadsheets/d/e/.../pub?output=csv" class="w-full bg-slate-900 border border-slate-700 text-slate-200 text-xs rounded-lg p-2.5 focus:ring-emerald-500 focus:border-emerald-500 transition-colors">
+
+        <div id="file-status" class="text-xs text-slate-400 flex items-center gap-2">
+          <i class="fa-solid fa-spinner fa-spin text-amber-400"></i>
+          <span>Loading members...</span>
         </div>
 
-        <div>
-          <label class="block text-xs font-medium text-slate-300 mb-1">Draw Results URL</label>
-          <input id="web-app-url-input" type="url" placeholder="https://script.google.com/macros/s/AKfycbzC1OsTpoEyC-57SdG5xRNJEc98KHbpM3yQ5qW9C1iR-Wst4BUzUwKefpKJX5ZMNeJ2YQ/exec" class="w-full bg-slate-900 border border-slate-700 text-slate-200 text-xs rounded-lg p-2.5 focus:ring-emerald-500 focus:border-emerald-500 transition-colors">
-        </div>
-
-        <button id="sync-sheets-btn" class="w-full py-2.5 px-4 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs rounded-lg shadow transition flex items-center justify-center gap-2">
-          <i class="fa-solid fa-rotate"></i>
-          <span>Sync from Google Sheets</span>
-        </button>
-
-        <div id="file-status" class="text-xs text-slate-400 flex items-center gap-2 pt-1">
-          <i class="fa-solid fa-circle-info text-slate-500"></i>
-          <span>Connecting to sheet...</span>
+        <div class="flex gap-2">
+          <button id="sync-sheets-btn" class="flex-1 py-2.5 px-4 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs rounded-lg shadow transition flex items-center justify-center gap-2">
+            <i class="fa-solid fa-rotate"></i>
+            <span>Refresh</span>
+          </button>
+          <button id="lock-btn" title="Lock this device: the PIN is asked again" class="py-2.5 px-4 bg-slate-700 hover:bg-slate-600 text-slate-200 font-semibold text-xs rounded-lg transition flex items-center justify-center gap-2">
+            <i class="fa-solid fa-lock"></i>
+            <span>Lock</span>
+          </button>
         </div>
       </div>
 
@@ -274,14 +268,12 @@
   </main>
 
   <script>
-    // Google Sheets Published CSV Source (Member Data)
-    const DEFAULT_SHEET_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQYi7Nd8CnSa82uPhUt_OcDbahQeMHKaG5wtMVa4VHZgDX0KTXcPK55HceuxCB-9g11pmkpt9ZI7kDI/pub?output=csv";
-    
+    // The draw server (Apps Script in server/, runs as treasurer@). It checks the PIN on every request,
+    // sends the member list and draw results, and records each draw in DrawResults V2.
+    const SERVER_URL = "https://script.google.com/macros/s/AKfycby0iLW5LvUA6jiQ1jzOh4bzata91_zDJ6KFvKimwSNujBNuyBhgtoeVVDj19_2zZJfLhA/exec";
+
     // This Week's Pot = paid members X this amount
     const POT_PER_PAID_MEMBER = 1.00;
-
-    // Draw Results V2 Google Sheets Dataset CSV Source
-    const CARRYOVER_SHEET_URL = "https://docs.google.com/spreadsheets/d/1FyZH_Y4ttMUx20S2K0OkvxCjo4Gb8Cyp2XGgAGOQ1uU/export?format=csv";
 
     // App State
     let members = [];
@@ -330,170 +322,85 @@
       } catch (e) {}
     }
 
-    // CSV Parsing Logic for Member Data
-    function parseCSVData(csvString) {
-      Papa.parse(csvString, {
-        header: true,
-        skipEmptyLines: true,
-        complete: function(results) {
-          members = results.data.map((row, idx) => {
-            const rawPaid = (row['Paid'] || row['Paid Annual Dues'] || (row['Dues Amt Paid'] ? 'Yes' : '') || 'No').toString().trim();
-            const paidVal = rawPaid.toLowerCase() === 'yes' || rawPaid.toLowerCase() === 'true' ? 'Yes' : 'No';
-
-            return {
-              id: row['ID'] || `id_${idx + 1}`,
-              firstName: row['First Name'] || '',
-              lastName: row['Last Name'] || '',
-              fullName: `${row['First Name'] || ''} ${row['Last Name'] || ''}`.trim() || 'Unknown Member',
-              paid: paidVal,
-              email: row['Email'] || 'N/A',
-              city: row['City'] || 'N/A'
-            };
-          }).filter(m => m.fullName.length > 0);
-
-          updateStats();
-          document.getElementById('file-status').innerHTML = `
-            <i class="fa-solid fa-circle-check text-emerald-400"></i>
-            <span class="text-emerald-400 font-semibold">Loaded ${members.length} members from Google Sheets.</span>
-          `;
-        },
-        error: function(err) {
-          alert('Error parsing sheet CSV: ' + err.message);
-        }
+    // Ask the draw server. Every request carries the PIN; a wrong or changed PIN brings the lock screen back.
+    async function callServer(action, extra) {
+      const res = await fetch(SERVER_URL, {
+        method: "POST",
+        headers: { "Content-Type": "text/plain" }, // no CORS preflight; Apps Script reads the body as text
+        body: JSON.stringify(Object.assign({ action: action, pin: currentPin }, extra || {}))
       });
+      let data;
+      try {
+        data = await res.json();
+      } catch (e) {
+        throw new Error("The draw server didn't answer properly. Tell the treasurer.");
+      }
+      if (!data.ok) {
+        const err = new Error(data.error || "The draw server didn't answer.");
+        err.wrongPin = !!data.wrongPin;
+        throw err;
+      }
+      return data;
     }
 
-    // Fetch Initial Carryover Amount & Draw Number automatically from Draw Results V2
-    async function fetchLatestCarryover() {
+    function setStatus(icon, color, text) {
+      document.getElementById('file-status').innerHTML =
+        `<i class="fa-solid ${icon} ${color}"></i> <span class="${color}">${escapeHtml(text)}</span>`;
+    }
+
+    // Members (name and paid only) and every draw so far, from the draw server
+    function applyData(data) {
+      members = data.members.map(m => ({
+        id: m.id,
+        firstName: m.firstName,
+        lastName: m.lastName,
+        fullName: `${m.firstName} ${m.lastName}`.trim(),
+        paid: m.paid
+      }));
+
+      drawResults = data.draws.slice().sort((a, b) => a.num - b.num);
+      resultsLoaded = true;
+      resultsError = false;
+      const last = drawResults[drawResults.length - 1];
+      nextDrawNum = last ? last.num + 1 : 1;
+      document.getElementById('carryover-amount').value = (last ? last.carryover : 0).toFixed(2);
+
+      renderHistory();
+      updateStats();
+      setStatus('fa-circle-check', 'text-emerald-400', `Loaded ${members.length} members and ${drawResults.length} draws.`);
+    }
+
+    async function loadData() {
+      setStatus('fa-spinner fa-spin', 'text-amber-400', 'Loading members...');
       try {
-        const response = await fetch(CARRYOVER_SHEET_URL);
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        const csvData = await response.text();
-
-        Papa.parse(csvData, {
-          header: true,
-          skipEmptyLines: true,
-          complete: function(results) {
-            drawResults = (results.data || [])
-              .filter(r => (r['Draw #'] || '').toString().trim() !== '')
-              .map(r => ({
-                num: parseInt(r['Draw #'], 10) || 0,
-                date: (r['Draw Date'] || '').toString().trim(),
-                name: `${(r['First Name'] || '').trim()} ${(r['Last Name'] || '').trim()}`.trim(),
-                won: moneyValue(r['Winner Amount']),
-                carryover: moneyValue(r['Carryover Amount'])
-              }));
-            resultsLoaded = true;
-            renderHistory();
-
-            if (results.data && results.data.length > 0) {
-              const lastRow = results.data[results.data.length - 1];
-              
-              // Extract Last Draw # and increment by 1
-              if (lastRow['Draw #'] !== undefined && lastRow['Draw #'] !== null && lastRow['Draw #'] !== '') {
-                const parsedDrawNum = parseInt(lastRow['Draw #'].toString().trim(), 10);
-                if (!isNaN(parsedDrawNum)) {
-                  nextDrawNum = parsedDrawNum + 1;
-                }
-              }
-
-              // Extract Carryover Amount
-              let foundVal = null;
-              const targetKeys = ['Carryover Amount', 'Carryover', 'Next Carryover Amount', 'Amount', 'Carryover ($)'];
-              for (let key of targetKeys) {
-                if (lastRow[key] !== undefined && lastRow[key] !== null && lastRow[key] !== '') {
-                  foundVal = lastRow[key];
-                  break;
-                }
-              }
-
-              if (foundVal === null) {
-                const rowValues = Object.values(lastRow);
-                for (let v of rowValues) {
-                  const cleaned = v.toString().replace(/[\$,]/g, '').trim();
-                  if (!isNaN(cleaned) && cleaned !== '') {
-                    foundVal = cleaned;
-                    break;
-                  }
-                }
-              }
-
-              if (foundVal !== null) {
-                const num = parseFloat(foundVal.toString().replace(/[\$,]/g, '')) || 0;
-                document.getElementById('carryover-amount').value = num.toFixed(2);
-              }
-
-              updateStats();
-            }
-          }
-        });
+        applyData(await callServer('load'));
       } catch (err) {
-        console.warn("Unable to automatically load carryover CSV from Draw Results V2:", err);
+        if (err.wrongPin) return lockApp('The PIN has changed. Enter the new one.');
         resultsError = true;
         renderHistory();
+        setStatus('fa-triangle-exclamation', 'text-red-400', 'Could not load: ' + err.message);
       }
     }
 
-    // Send draw outcome data to Google Apps Script Web App
+    // Record the draw in DrawResults V2 (the server adds the winner's email)
     async function sendDrawUpdateToSheet(drawData) {
-      const inputUrl = document.getElementById('web-app-url-input')?.value.trim();
-      const webAppUrl = inputUrl || "https://script.google.com/macros/s/AKfycbzC1OsTpoEyC-57SdG5xRNJEc98KHbpM3yQ5qW9C1iR-Wst4BUzUwKefpKJX5ZMNeJ2YQ/exec";
-      const statusEl = document.getElementById('file-status');
-
-      if (webAppUrl) {
-        localStorage.setItem('acc_5050_webapp_url', webAppUrl);
-      } else {
-        statusEl.innerHTML = `<i class="fa-solid fa-circle-check text-emerald-400"></i> <span class="text-emerald-400">Draw complete!</span>`;
-        return;
-      }
-
-      statusEl.innerHTML = `<i class="fa-solid fa-spinner fa-spin text-sky-400"></i> <span>Logging Draw #${drawData.drawNum} to Google Sheet...</span>`;
-
-      const payload = {
-        drawNum: drawData.drawNum,
-        drawDate: localDate(),
-        firstName: drawData.firstName,
-        lastName: drawData.lastName,
-        email: drawData.email,
-        winnerAmount: drawData.isPaid ? drawData.winnerShareVal : "$0.00",
-        carryoverAmount: drawData.nextCarryoverVal
-      };
-
+      setStatus('fa-spinner fa-spin', 'text-sky-400', `Recording Draw #${drawData.drawNum}...`);
       try {
-        await fetch(webAppUrl, {
-          method: "POST",
-          mode: "no-cors",
-          headers: { "Content-Type": "text/plain" },
-          body: JSON.stringify(payload)
+        await callServer('draw', {
+          drawNum: drawData.drawNum,
+          drawDate: localDate(),
+          memberId: drawData.id,
+          winnerAmount: drawData.prizeAmount,
+          carryoverAmount: drawData.nextCarryoverAmount
         });
-
-        statusEl.innerHTML = `<i class="fa-solid fa-circle-check text-emerald-400"></i> <span class="text-emerald-400 font-semibold">Draw #${drawData.drawNum} updated in Google Sheet!</span>`;
+        setStatus('fa-circle-check', 'text-emerald-400', `Draw #${drawData.drawNum} recorded in Draw Results.`);
+        // Ready for another draw: the next number, starting from this draw's carryover
+        nextDrawNum = drawData.drawNum + 1;
+        document.getElementById('carryover-amount').value = drawData.nextCarryoverAmount.toFixed(2);
+        updateStats();
       } catch (err) {
-        statusEl.innerHTML = `<i class="fa-solid fa-triangle-exclamation text-red-400"></i> <span class="text-red-400">Failed to log draw result to Google Sheet.</span>`;
-        console.error("Error updating sheet:", err);
-      }
-    }
-
-    // Fetch Member Data from Google Sheets
-    async function fetchGoogleSheet(url) {
-      if (!url) {
-        alert("Please enter a valid published Google Sheets CSV URL.");
-        return;
-      }
-      
-      const statusEl = document.getElementById('file-status');
-      statusEl.innerHTML = `<i class="fa-solid fa-spinner fa-spin text-amber-400"></i> <span>Syncing Google Sheet...</span>`;
-
-      try {
-        const response = await fetch(url);
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        const csvData = await response.text();
-        
-        localStorage.setItem('acc_5050_sheet_url', url);
-        parseCSVData(csvData);
-      } catch (err) {
-        statusEl.innerHTML = `<i class="fa-solid fa-triangle-exclamation text-red-400"></i> <span class="text-red-400">Failed to load sheet. Check link permissions.</span>`;
-        alert("Failed to load Google Sheet. Ensure the link is published to web as CSV and access is public.");
+        setStatus('fa-triangle-exclamation', 'text-red-400', `Draw #${drawData.drawNum} NOT recorded: ${err.message} Write it down and tell the treasurer.`);
+        alert(`Draw #${drawData.drawNum} was not recorded: ${err.message}\n\nWrite down the winner and amounts and tell the treasurer.`);
       }
     }
 
@@ -618,6 +525,8 @@
         winnerShareVal: formattedWinnerShare,
         prizeVal: isPaid ? formattedPrize : `No Winner (${formattedNextCarryover} Carryover)`,
         nextCarryoverVal: formattedNextCarryover,
+        prizeAmount: prizeVal,
+        nextCarryoverAmount: nextCarryoverVal,
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
       };
 
@@ -724,27 +633,33 @@
       }).join('');
     }
 
-    // PIN lock. Only a PBKDF2 hash of the PIN is here, never the PIN. To change the PIN:
-    //   node -e "console.log(require('crypto').pbkdf2Sync('NEWPIN','acc-5050-v1',300000,32,'sha256').toString('hex'))"
-    // and paste the result into PIN_HASH. Every device then asks for the new PIN.
-    const PIN_HASH = "a24f30eb3196fd9e6ebc00373f3bdd5976696a7162bd2639e5a15d807c435a7d";
-    const PIN_SALT = "acc-5050-v1";
-    const PIN_KEY = "acc_5050_unlocked"; // remembered on this device once unlocked
+    // PIN lock. The draw server checks the PIN on every request; nothing loads without it.
+    // The PIN is remembered on this device once it works (Lock forgets it). Change it in the server's PIN script property.
+    const PIN_KEY = "acc_5050_pin";
+    let currentPin = "";
 
-    async function pinHash(pin) {
-      const enc = new TextEncoder();
-      const key = await crypto.subtle.importKey("raw", enc.encode(pin), "PBKDF2", false, ["deriveBits"]);
-      const bits = await crypto.subtle.deriveBits({ name: "PBKDF2", hash: "SHA-256", salt: enc.encode(PIN_SALT), iterations: 300000 }, key, 256);
-      return Array.from(new Uint8Array(bits)).map((b) => b.toString(16).padStart(2, "0")).join("");
+    function savedPin() {
+      try { return localStorage.getItem(PIN_KEY) || ""; } catch (e) { return ""; }
     }
 
-    function unlocked() {
-      try { return localStorage.getItem(PIN_KEY) === PIN_HASH; } catch (e) { return false; }
+    function lockApp(message) {
+      try { localStorage.removeItem(PIN_KEY); } catch (e) { /* nothing saved */ }
+      currentPin = "";
+      const err = document.getElementById('pin-error');
+      err.textContent = message || "";
+      err.classList.toggle('hidden', !message);
+      document.getElementById('pin-lock').classList.remove('hidden');
+      document.getElementById('pin-input').value = "";
+      document.getElementById('pin-input').focus();
     }
 
-    function openApp() {
-      document.getElementById('pin-lock').remove();
-      startApp();
+    // Try a PIN: on success the app opens with the data that came back
+    async function unlock(pin) {
+      currentPin = pin;
+      const data = await callServer('load');
+      try { localStorage.setItem(PIN_KEY, pin); } catch (e) { /* stays unlocked until the page reloads */ }
+      document.getElementById('pin-lock').classList.add('hidden');
+      applyData(data);
     }
 
     document.getElementById('pin-form').addEventListener('submit', async (e) => {
@@ -753,43 +668,36 @@
       const btn = document.getElementById('pin-btn');
       btn.disabled = true;
       btn.textContent = "Checking...";
-      const ok = (await pinHash(input.value.trim())) === PIN_HASH;
+      try {
+        await unlock(input.value.trim());
+      } catch (err) {
+        lockApp(err.wrongPin ? "Wrong PIN. Try again." : err.message);
+      }
       btn.disabled = false;
       btn.textContent = "Unlock";
-      if (ok) {
-        try { localStorage.setItem(PIN_KEY, PIN_HASH); } catch (err) { /* stays unlocked until the page reloads */ }
-        openApp();
-      } else {
-        document.getElementById('pin-error').classList.remove('hidden');
-        input.value = "";
-        input.focus();
-      }
     });
 
-    // Initialize Page (members and results load only once the PIN is entered)
-    window.addEventListener('DOMContentLoaded', () => {
-      if (unlocked()) openApp();
-      else document.getElementById('pin-input').focus();
-    });
-
-    function startApp() {
-      document.getElementById('sheets-url-input').value = DEFAULT_SHEET_URL;
-      
-      const savedWebAppUrl = localStorage.getItem('acc_5050_webapp_url');
-      if (savedWebAppUrl) {
-        document.getElementById('web-app-url-input').value = savedWebAppUrl;
+    // Initialize Page
+    window.addEventListener('DOMContentLoaded', async () => {
+      // Settings from earlier versions (Sheet links, the old PIN check) are no longer used
+      try { ['acc_5050_unlocked', 'acc_5050_webapp_url', 'acc_5050_sheet_url'].forEach(k => localStorage.removeItem(k)); } catch (e) {}
+      const pin = savedPin();
+      if (!pin) return lockApp();
+      const btn = document.getElementById('pin-btn');
+      btn.disabled = true;
+      btn.textContent = "Opening...";
+      try {
+        await unlock(pin);
+      } catch (err) {
+        lockApp(err.wrongPin ? "The PIN has changed. Enter the new one." : err.message);
       }
-
-      fetchGoogleSheet(DEFAULT_SHEET_URL);
-      fetchLatestCarryover();
-    }
+      btn.disabled = false;
+      btn.textContent = "Unlock";
+    });
 
     // Event Listeners
-    document.getElementById('sync-sheets-btn').addEventListener('click', () => {
-      const url = document.getElementById('sheets-url-input').value.trim();
-      fetchGoogleSheet(url);
-    });
-
+    document.getElementById('sync-sheets-btn').addEventListener('click', loadData);
+    document.getElementById('lock-btn').addEventListener('click', () => lockApp());
     document.getElementById('carryover-amount').addEventListener('input', updateStats);
     document.getElementById('exclude-winners').addEventListener('change', updateStats);
     document.getElementById('draw-btn').addEventListener('click', startDraw);

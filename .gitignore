@@ -5,3 +5,7 @@
 !index.html
 !README.md
 !CAST_SETUP.md
+!server/
+!server/Code.gs
+!server/appsscript.json
+!server/.clasp.json
