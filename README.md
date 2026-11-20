@@ -17,3 +17,9 @@ A single-page app (`index.html`) for the club's weekly 50/50 draw.
 - `main`: what's live. It started as v2.2, the version that was pasted into the Google Site.
 - `cast`: v2.4, which adds a Cast button and a TV screen (`?display=tv`). It hasn't been used live yet. See
   [CAST_SETUP.md](CAST_SETUP.md). Merge it into `main` once it's been tested.
+
+## PIN
+
+The app opens behind a PIN screen, and the member list and results load only after the PIN is entered. Each device remembers the unlock. The repo holds only a PBKDF2 hash of the PIN (`PIN_HASH` in index.html). To change the PIN, run the command in the comment above `PIN_HASH` and paste in the new hash. Every device then asks for the new PIN.
+
+This is a lock on the front door, not real security. The page and its source are public, so someone who reads the code can still find the published Sheet links.

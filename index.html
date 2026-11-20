@@ -25,6 +25,21 @@
 </head>
 <body class="bg-slate-900 text-slate-100 min-h-screen font-sans antialiased">
 
+  <!-- PIN lock: covers the app until the PIN is entered -->
+  <div id="pin-lock" class="fixed inset-0 z-50 bg-slate-900 flex items-center justify-center px-4">
+    <form id="pin-form" class="w-full max-w-xs bg-slate-800 border border-slate-700 rounded-2xl shadow-xl p-6 space-y-4 text-center">
+      <i class="fa-solid fa-lock text-3xl text-red-400"></i>
+      <div>
+        <h1 class="text-lg font-bold text-white">Almonte Curling Club</h1>
+        <p class="text-xs text-slate-400">Enter the PIN to open the 50/50 draw app</p>
+      </div>
+      <input id="pin-input" type="password" inputmode="numeric" autocomplete="off" autofocus aria-label="PIN"
+        class="w-full bg-slate-900 border border-slate-700 text-white text-center text-2xl tracking-[0.5em] rounded-lg p-3 focus:ring-red-500 focus:border-red-500">
+      <p id="pin-error" class="hidden text-xs text-red-400">Wrong PIN. Try again.</p>
+      <button id="pin-btn" type="submit" class="w-full py-2.5 bg-red-600 hover:bg-red-500 disabled:bg-slate-700 text-white font-semibold rounded-lg transition">Unlock</button>
+    </form>
+  </div>
+
   <!-- Header -->
   <header class="bg-slate-800 border-b border-slate-700 shadow-lg">
     <div class="max-w-6xl mx-auto px-4 py-5 flex flex-col md:flex-row justify-between items-center gap-4">
@@ -709,8 +724,55 @@
       }).join('');
     }
 
-    // Initialize Page
+    // PIN lock. Only a PBKDF2 hash of the PIN is here, never the PIN. To change the PIN:
+    //   node -e "console.log(require('crypto').pbkdf2Sync('NEWPIN','acc-5050-v1',300000,32,'sha256').toString('hex'))"
+    // and paste the result into PIN_HASH. Every device then asks for the new PIN.
+    const PIN_HASH = "a24f30eb3196fd9e6ebc00373f3bdd5976696a7162bd2639e5a15d807c435a7d";
+    const PIN_SALT = "acc-5050-v1";
+    const PIN_KEY = "acc_5050_unlocked"; // remembered on this device once unlocked
+
+    async function pinHash(pin) {
+      const enc = new TextEncoder();
+      const key = await crypto.subtle.importKey("raw", enc.encode(pin), "PBKDF2", false, ["deriveBits"]);
+      const bits = await crypto.subtle.deriveBits({ name: "PBKDF2", hash: "SHA-256", salt: enc.encode(PIN_SALT), iterations: 300000 }, key, 256);
+      return Array.from(new Uint8Array(bits)).map((b) => b.toString(16).padStart(2, "0")).join("");
+    }
+
+    function unlocked() {
+      try { return localStorage.getItem(PIN_KEY) === PIN_HASH; } catch (e) { return false; }
+    }
+
+    function openApp() {
+      document.getElementById('pin-lock').remove();
+      startApp();
+    }
+
+    document.getElementById('pin-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const input = document.getElementById('pin-input');
+      const btn = document.getElementById('pin-btn');
+      btn.disabled = true;
+      btn.textContent = "Checking...";
+      const ok = (await pinHash(input.value.trim())) === PIN_HASH;
+      btn.disabled = false;
+      btn.textContent = "Unlock";
+      if (ok) {
+        try { localStorage.setItem(PIN_KEY, PIN_HASH); } catch (err) { /* stays unlocked until the page reloads */ }
+        openApp();
+      } else {
+        document.getElementById('pin-error').classList.remove('hidden');
+        input.value = "";
+        input.focus();
+      }
+    });
+
+    // Initialize Page (members and results load only once the PIN is entered)
     window.addEventListener('DOMContentLoaded', () => {
+      if (unlocked()) openApp();
+      else document.getElementById('pin-input').focus();
+    });
+
+    function startApp() {
       document.getElementById('sheets-url-input').value = DEFAULT_SHEET_URL;
       
       const savedWebAppUrl = localStorage.getItem('acc_5050_webapp_url');
@@ -720,7 +782,7 @@
 
       fetchGoogleSheet(DEFAULT_SHEET_URL);
       fetchLatestCarryover();
-    });
+    }
 
     // Event Listeners
     document.getElementById('sync-sheets-btn').addEventListener('click', () => {
