@@ -1,0 +1,7 @@
+# Only the app and its notes are published. Everything else here (installers,
+# member CSVs, old copies) stays on this computer.
+*
+!.gitignore
+!index.html
+!README.md
+!CAST_SETUP.md
