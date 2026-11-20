@@ -225,32 +225,29 @@
 
       </div>
 
-      <!-- Winner Log Table -->
+      <!-- Draw Results (every draw this season, from the Draw Results V2 sheet) -->
       <div class="bg-slate-800 rounded-xl p-6 border border-slate-700 shadow-md relative z-30">
-        <div class="flex justify-between items-center mb-4">
+        <div class="flex justify-between items-center mb-4 gap-4 flex-wrap">
           <h3 class="text-md font-bold text-white flex items-center gap-2">
-            <i class="fa-solid fa-clock-rotate-left text-amber-400"></i> Draw History
+            <i class="fa-solid fa-clock-rotate-left text-amber-400"></i> Draw Results
           </h3>
-          <button id="clear-history-btn" class="text-xs text-slate-400 hover:text-red-400 transition-colors relative z-40">
-            Clear History
-          </button>
+          <span id="results-summary" class="text-xs text-slate-400"></span>
         </div>
 
         <div class="overflow-x-auto">
           <table class="w-full text-left text-xs text-slate-300">
             <thead class="bg-slate-900/60 text-slate-400 uppercase tracking-wider text-[10px]">
               <tr>
-                <th class="py-2.5 px-3">Time</th>
-                <th class="py-2.5 px-3">Paid</th>
-                <th class="py-2.5 px-3">Name</th>
-                <th class="py-2.5 px-3">This Week's Pot</th>
-                <th class="py-2.5 px-3">Carryover Amount</th>
-                <th class="py-2.5 px-3">Result / Prize</th>
+                <th class="py-2.5 px-3">Draw</th>
+                <th class="py-2.5 px-3">Date</th>
+                <th class="py-2.5 px-3">Drawn</th>
+                <th class="py-2.5 px-3 text-right">Prize</th>
+                <th class="py-2.5 px-3">Result</th>
               </tr>
             </thead>
             <tbody id="history-tbody" class="divide-y divide-slate-700/50">
               <tr>
-                <td colspan="6" class="py-4 text-center text-slate-500">No draws completed yet.</td>
+                <td colspan="5" class="py-4 text-center text-slate-500">Loading draw results…</td>
               </tr>
             </tbody>
           </table>
@@ -273,7 +270,10 @@
 
     // App State
     let members = [];
-    let winnersList = [];
+    let winnersList = [];      // drawn this session (for "Exclude previously drawn members")
+    let drawResults = [];      // every draw from the Draw Results V2 sheet, plus any drawn this session
+    let resultsLoaded = false;
+    let resultsError = false;
     let isDrawing = false;
     let nextDrawNum = 1;
 
@@ -359,6 +359,18 @@
           header: true,
           skipEmptyLines: true,
           complete: function(results) {
+            drawResults = (results.data || [])
+              .filter(r => (r['Draw #'] || '').toString().trim() !== '')
+              .map(r => ({
+                num: parseInt(r['Draw #'], 10) || 0,
+                date: (r['Draw Date'] || '').toString().trim(),
+                name: `${(r['First Name'] || '').trim()} ${(r['Last Name'] || '').trim()}`.trim(),
+                won: moneyValue(r['Winner Amount']),
+                carryover: moneyValue(r['Carryover Amount'])
+              }));
+            resultsLoaded = true;
+            renderHistory();
+
             if (results.data && results.data.length > 0) {
               const lastRow = results.data[results.data.length - 1];
               
@@ -402,6 +414,8 @@
         });
       } catch (err) {
         console.warn("Unable to automatically load carryover CSV from Draw Results V2:", err);
+        resultsError = true;
+        renderHistory();
       }
     }
 
@@ -594,6 +608,15 @@
 
       winnersList.unshift(drawRecord);
 
+      // Show this draw in Draw Results right away (the sheet gets it in the background)
+      drawResults.push({
+        num: nextDrawNum,
+        date: new Date().toISOString().split('T')[0],
+        name: drawnMember.fullName,
+        won: prizeVal,
+        carryover: nextCarryoverVal
+      });
+
       document.getElementById('display-shuffling').classList.add('hidden');
       document.getElementById('display-winner').classList.remove('hidden');
 
@@ -638,24 +661,46 @@
       sendDrawUpdateToSheet(drawRecord);
     }
 
-    // Render History Table
+    // "$336.00" -> 336
+    function moneyValue(v) {
+      const n = parseFloat((v || '').toString().replace(/[^0-9.\-]/g, ''));
+      return isNaN(n) ? 0 : n;
+    }
+
+    function escapeHtml(s) {
+      return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    }
+
+    // Draw Results table: every draw, newest first. The prize is Winner Amount when someone won,
+    // or the Carryover Amount when the person drawn hadn't paid in.
     function renderHistory() {
       const tbody = document.getElementById('history-tbody');
-      if (winnersList.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="6" class="py-4 text-center text-slate-500">No draws completed yet.</td></tr>`;
+      const summary = document.getElementById('results-summary');
+      const draws = drawResults.slice().reverse();
+      if (draws.length === 0) {
+        const msg = resultsError ? 'Could not load draw results.' : resultsLoaded ? 'No draws yet.' : 'Loading draw results…';
+        tbody.innerHTML = `<tr><td colspan="5" class="py-4 text-center text-slate-500">${msg}</td></tr>`;
+        summary.innerText = '';
         return;
       }
 
-      tbody.innerHTML = winnersList.map(w => `
+      const winners = draws.filter(d => d.won > 0);
+      const totalWon = winners.reduce((t, d) => t + d.won, 0);
+      summary.innerText = `${draws.length} draw${draws.length === 1 ? '' : 's'} · ${winners.length} winner${winners.length === 1 ? '' : 's'} · $${totalWon.toFixed(2)} won`;
+
+      tbody.innerHTML = draws.map(d => {
+        const result = d.won > 0
+          ? `<span class="inline-block px-2 py-0.5 rounded-full bg-emerald-500/20 border border-emerald-500/40 text-emerald-400 font-semibold">Won $${d.won.toFixed(2)}</span>`
+          : `<span class="inline-block px-2 py-0.5 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-400 font-semibold">Hadn't paid in, $${d.carryover.toFixed(2)} carried over</span>`;
+        return `
         <tr class="hover:bg-slate-750/50">
-          <td class="py-2.5 px-3 text-slate-400">${w.timestamp}</td>
-          <td class="py-2.5 px-3 font-semibold ${w.isPaid ? 'text-emerald-400' : 'text-red-400'}">${w.paid}</td>
-          <td class="py-2.5 px-3 font-bold text-white">${w.fullName}</td>
-          <td class="py-2.5 px-3 text-sky-400 font-semibold">${w.weeklyVal}</td>
-          <td class="py-2.5 px-3 text-purple-400 font-semibold">${w.carryoverVal}</td>
-          <td class="py-2.5 px-3 ${w.isPaid ? 'text-emerald-400 font-bold' : 'text-amber-400 font-semibold'}">${w.prizeVal}</td>
-        </tr>
-      `).join('');
+          <td class="py-2.5 px-3 text-amber-400 font-semibold">#${d.num}</td>
+          <td class="py-2.5 px-3 text-slate-400 whitespace-nowrap">${escapeHtml(d.date)}</td>
+          <td class="py-2.5 px-3 font-bold text-white">${escapeHtml(d.name)}</td>
+          <td class="py-2.5 px-3 text-right font-semibold">$${(d.won + d.carryover).toFixed(2)}</td>
+          <td class="py-2.5 px-3">${result}</td>
+        </tr>`;
+      }).join('');
     }
 
     // Initialize Page
@@ -680,13 +725,6 @@
     document.getElementById('carryover-amount').addEventListener('input', updateStats);
     document.getElementById('exclude-winners').addEventListener('change', updateStats);
     document.getElementById('draw-btn').addEventListener('click', startDraw);
-    document.getElementById('clear-history-btn').addEventListener('click', () => {
-      if (confirm('Clear draw history log?')) {
-        winnersList = [];
-        renderHistory();
-        updateStats();
-      }
-    });
   </script>
 </body>
 </html>
