@@ -436,7 +436,7 @@
 
       const payload = {
         drawNum: drawData.drawNum,
-        drawDate: new Date().toISOString().split('T')[0],
+        drawDate: localDate(),
         firstName: drawData.firstName,
         lastName: drawData.lastName,
         email: drawData.email,
@@ -611,7 +611,7 @@
       // Show this draw in Draw Results right away (the sheet gets it in the background)
       drawResults.push({
         num: nextDrawNum,
-        date: new Date().toISOString().split('T')[0],
+        date: localDate(),
         name: drawnMember.fullName,
         won: prizeVal,
         carryover: nextCarryoverVal
@@ -659,6 +659,12 @@
       renderHistory();
       updateStats();
       sendDrawUpdateToSheet(drawRecord);
+    }
+
+    // Today as yyyy-mm-dd on this computer's clock (toISOString is UTC: a draw after 7 pm would get tomorrow's date)
+    function localDate() {
+      const d = new Date();
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
     }
 
     // "$336.00" -> 336
