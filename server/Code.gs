@@ -18,6 +18,8 @@ const RESULTS_DEFAULT = '1FyZH_Y4ttMUx20S2K0OkvxCjo4Gb8Cyp2XGgAGOQ1uU'; // DrawR
 const RESULTS_HEADERS = ['Draw #', 'Draw Date', 'First Name', 'Last Name', 'Email', 'Winner Amount', 'Carryover Amount'];
 const MAX_FAILS = 10;        // wrong PINs allowed...
 const LOCK_SECONDS = 15 * 60; // ...in this long, before every request is refused until it passes
+// Who is emailed when a lockout starts. The LOCKOUT_EMAIL script property can name someone else.
+const LOCKOUT_EMAIL = 'clubmgr@almontecurling.ca';
 
 function doPost(e) {
   try {
@@ -49,11 +51,46 @@ function checkPin_(pin) {
   if (fails >= MAX_FAILS) throw new Error('Too many wrong PINs. Try again in 15 minutes.');
   if (String(pin || '') !== want) {
     cache.put('fails', String(fails + 1), LOCK_SECONDS);
+    if (fails + 1 === MAX_FAILS) emailLockout_('');
     Utilities.sleep(1000);
     const err = new Error('Wrong PIN.');
     err.wrongPin = true;
     throw err;
   }
+}
+
+/** Tells the club manager a lockout has started, once per lockout. A failed email never stops the request. */
+function emailLockout_(note) {
+  const to = PropertiesService.getScriptProperties().getProperty('LOCKOUT_EMAIL') || LOCKOUT_EMAIL;
+  const when = Utilities.formatDate(new Date(), 'America/Toronto', "EEEE, MMMM d 'at' h:mm a");
+  try {
+    MailApp.sendEmail({
+      to: to,
+      subject: 'ACC 50/50 draw app: PIN locked after ' + MAX_FAILS + ' wrong PINs',
+      body: 'The 50/50 draw server had ' + MAX_FAILS + ' wrong PINs, the last on ' + when + (note ? ' (' + note + ')' : '') + '.\n\n' +
+        'Every request, including ones with the right PIN, is now refused for 15 minutes after the last wrong one, ' +
+        'so the draw app cannot load or record a draw until then.\n\n' +
+        'If it was someone at the club mistyping, it clears by itself, or open the "ACC 50-50 Draw Server" script ' +
+        '(as treasurer@), choose clearPinLockout and click Run to lift it now.\n\n' +
+        'If someone may be guessing the PIN, change PIN in Project Settings > Script properties, then tell the ' +
+        'people who run the draw the new one.\n\n' +
+        'Google does not say where the requests came from, so this email cannot say who it was.'
+    });
+  } catch (err) {
+    console.error('Could not email the PIN lockout: ' + err.message);
+  }
+}
+
+/** Run once from the editor to approve sending email, and to check the lockout email arrives. */
+function testLockoutEmail() {
+  emailLockout_('a test from the editor');
+  Logger.log('Sent a test lockout email to ' + (PropertiesService.getScriptProperties().getProperty('LOCKOUT_EMAIL') || LOCKOUT_EMAIL) + '.');
+}
+
+/** Run from the editor to lift a PIN lockout straight away. */
+function clearPinLockout() {
+  CacheService.getScriptCache().remove('fails');
+  Logger.log('PIN lockout cleared.');
 }
 
 function json_(o) {

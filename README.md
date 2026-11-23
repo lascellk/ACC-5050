@@ -21,7 +21,10 @@ server checks it before anything is read or written:
 - **draw**: adds the draw to DrawResults V2 and looks up the winner's email itself. A draw number that's
   already recorded is refused, so a draw can't be recorded twice.
 
-After 10 wrong PINs in 15 minutes, the server refuses every request until those 15 minutes are up.
+After 10 wrong PINs in 15 minutes, the server refuses every request until those 15 minutes are up. When that
+starts, it emails clubmgr@almontecurling.ca (or whoever the `LOCKOUT_EMAIL` script property names) with what to
+do. To lift a lockout straight away, run `clearPinLockout` in the script. After the server's permissions change,
+run `testLockoutEmail` once as treasurer@ to approve sending email and check that it arrives.
 
 Each device remembers the PIN once it works. **Lock** makes that device forget it.
 
