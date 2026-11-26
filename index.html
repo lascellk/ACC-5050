@@ -6,6 +6,25 @@
   <title>Almonte Curling Club - 50/50 Draw App</title>
   <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    // Club colours from the ACC crest (navy, red, gold, cream), the same as the Payment Tracker's dark theme.
+    // The page's slate, red and amber classes are remapped to them.
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            slate: {
+              50: '#f4f1ea', 100: '#e9ecf2', 200: '#dde2ea', 300: '#c3cad6', 400: '#9ca8bd',
+              500: '#6c7a92', 600: '#3a4c6e', 700: '#2a3a58', 750: '#1a2843', 800: '#16223a', 900: '#0e1626'
+            },
+            red: { 300: '#ff9aa0', 400: '#ff6b73', 500: '#d93a44', 600: '#c22a33', 700: '#a3222a' },
+            amber: { 300: '#ecd59f', 400: '#e2c47f', 500: '#c9a95c', 600: '#b8954a' }
+          }
+        }
+      }
+    };
+  </script>
+  <link rel="icon" type="image/png" href="logo.png">
   <!-- Canvas Confetti -->
   <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
   <!-- FontAwesome Icons -->
@@ -21,9 +40,9 @@
     }
 
     /* Cast button (same icon as the Bonspiel Manager); gold while casting */
-    .cast-button { color: #e2e8f0; }
-    .cast-button:hover { color: #7dd3fc; }
-    .cast-button.casting { color: #fbbf24; border-color: #fbbf24; }
+    .cast-button { color: #e9ecf2; }
+    .cast-button:hover { color: #ffffff; border-color: #c9a95c; }
+    .cast-button.casting { color: #e2c47f; border-color: #e2c47f; }
 
     /* TV mode: what the Chromecast shows (this page with ?display=tv). The controls, the PIN
        screen and the results table are hidden, and the draw display fills the screen. */
@@ -48,7 +67,7 @@
   <!-- PIN lock: covers the app until the PIN is entered -->
   <div id="pin-lock" class="controller-only fixed inset-0 z-50 bg-slate-900 flex items-center justify-center px-4">
     <form id="pin-form" class="w-full max-w-xs bg-slate-800 border border-slate-700 rounded-2xl shadow-xl p-6 space-y-4 text-center">
-      <i class="fa-solid fa-lock text-3xl text-red-400"></i>
+      <img src="logo.png" alt="" width="80" height="80" class="w-20 h-20 mx-auto">
       <div>
         <h1 class="text-lg font-bold text-white">Almonte Curling Club</h1>
         <p class="text-xs text-slate-400">Enter the PIN to open the 50/50 draw app</p>
@@ -61,12 +80,13 @@
   </div>
 
   <!-- Header -->
-  <header class="bg-slate-800 border-b border-slate-700 shadow-lg">
-    <div class="max-w-6xl mx-auto px-4 py-5 flex flex-col md:flex-row justify-between items-center gap-4">
-      <div class="flex items-center space-x-4">
-       <div>
-          <h1 class="text-2xl font-bold tracking-tight text-white">Almonte Curling Club</h1>
-          <p class="text-xs text-red-400 font-semibold tracking-wider uppercase">Official 50/50 Raffle Draw App</p>
+  <header class="bg-slate-800 border-b-[3px] border-amber-500 shadow-lg">
+    <div class="max-w-6xl mx-auto px-4 py-4 flex flex-col md:flex-row justify-between items-center gap-4">
+      <div class="flex items-center gap-4">
+        <img src="logo.png" alt="Almonte Curling Club" width="64" height="64" class="w-16 h-16 flex-none">
+        <div>
+          <p class="text-xs text-amber-400 font-extrabold tracking-widest uppercase">Almonte Curling Club</p>
+          <h1 class="text-2xl font-bold tracking-tight text-white">Official 50/50 Raffle Draw</h1>
         </div>
       </div>
       <div class="flex items-center gap-3 flex-wrap justify-center">
@@ -636,7 +656,8 @@
         confetti({
           particleCount: 120,
           spread: 70,
-          origin: { y: 0.6 }
+          origin: { y: 0.6 },
+          colors: ['#c22a33', '#e2c47f', '#ffffff', '#3a6fc4']   // crest red, gold, white, navy
         });
       } else {
         badgeEl.className = "inline-block px-4 py-1.5 bg-amber-500/20 border border-amber-500/40 rounded-full text-amber-400 text-xs font-bold tracking-wider uppercase";
