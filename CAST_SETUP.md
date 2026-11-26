@@ -4,7 +4,8 @@ These steps let the **Cast** button send the draw to the clubhouse TV from Chrom
 It's a one-time setup of about 30 minutes, plus a short wait for Google.
 
 **Done so far (2026-11-26):** the Cast app is registered with Application ID **`D972DF58`**, and that ID is
-already in `index.html` (`CAST_APP_ID`). Steps 1 and 4 are done. Check that steps 2 and 3 match what's below.
+already in `index.html` (`CAST_APP_ID`). The Cast app was published the same day (step 6), so step 3 is no longer
+needed. Check that step 2 matches what's below.
 The receiver URL must be exactly `https://lascellk.github.io/ACC-5050/?display=tv`.
 
 ---
