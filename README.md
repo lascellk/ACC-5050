@@ -43,8 +43,16 @@ clasp redeploy AKfycby0iLW5LvUA6jiQ1jzOh4bzata91_zDJ6KFvKimwSNujBNuyBhgtoeVVDj19
 treasurer@ needs view access to ACC Members 2026-27 and edit access to DrawResults V2. Neither Sheet needs to
 be published to the web or shared by link.
 
+## Cast to the TV
+
+The Cast button in the header (Chrome on an Android phone or a computer) shows the draw on the clubhouse TV,
+the same way as the Bonspiel Manager. The Chromecast opens https://lascellk.github.io/ACC-5050/?display=tv ,
+which hides the controls and skips the PIN. The phone or laptop still runs the draw and sends each screen to the
+TV over a private Cast channel, so the TV never talks to the draw server. Cast App ID `D972DF58`
+(`CAST_APP_ID`). Setup and troubleshooting: [CAST_SETUP.md](CAST_SETUP.md).
+
 ## Branches
 
 - `main`: what's live.
-- `cast`: v2.4, which adds a Cast button and a TV screen (`?display=tv`). It hasn't been used live yet and
-  doesn't have the PIN or the draw server. See [CAST_SETUP.md](CAST_SETUP.md).
+- `cast`: the old v2.4 Cast version, from before the PIN and the draw server. Its Cast code is now on `main`;
+  the branch is kept only for reference.

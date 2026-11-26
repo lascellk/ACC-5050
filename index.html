@@ -19,12 +19,34 @@
     .animate-pulse-ring {
       animation: pulse-ring 1.8s infinite ease-in-out;
     }
+
+    /* Cast button (same icon as the Bonspiel Manager); gold while casting */
+    .cast-button { color: #e2e8f0; }
+    .cast-button:hover { color: #7dd3fc; }
+    .cast-button.casting { color: #fbbf24; border-color: #fbbf24; }
+
+    /* TV mode: what the Chromecast shows (this page with ?display=tv). The controls, the PIN
+       screen and the results table are hidden, and the draw display fills the screen. */
+    body.tv-mode .controller-only { display: none !important; }
+    body.tv-mode main { max-width: none; }
+    body.tv-mode #display-col { grid-column: 1 / -1; }
+    body.tv-mode #display-box { min-height: calc(100vh - 170px); }
+    body.tv-mode #winner-name { font-size: clamp(3rem, 8vw, 7rem); line-height: 1.05; }
+    body.tv-mode #shuffle-name { font-size: clamp(3rem, 7vw, 6rem); height: auto; }
+    body.tv-mode #winner-details { font-size: 1.25rem; line-height: 1.75rem; max-width: 64rem; }
+    body.tv-mode #winner-badge { font-size: 1rem; }
+    body.tv-mode #display-idle h3 { font-size: 2.5rem; }
+    body.tv-mode #display-idle p { font-size: 1.25rem; max-width: 40rem; }
   </style>
 </head>
 <body class="bg-slate-900 text-slate-100 min-h-screen font-sans antialiased">
+  <script>
+    // Set TV mode before anything is drawn, so the PIN screen never flashes up on the TV
+    if (new URLSearchParams(location.search).get('display') === 'tv') document.body.classList.add('tv-mode');
+  </script>
 
   <!-- PIN lock: covers the app until the PIN is entered -->
-  <div id="pin-lock" class="fixed inset-0 z-50 bg-slate-900 flex items-center justify-center px-4">
+  <div id="pin-lock" class="controller-only fixed inset-0 z-50 bg-slate-900 flex items-center justify-center px-4">
     <form id="pin-form" class="w-full max-w-xs bg-slate-800 border border-slate-700 rounded-2xl shadow-xl p-6 space-y-4 text-center">
       <i class="fa-solid fa-lock text-3xl text-red-400"></i>
       <div>
@@ -47,31 +69,39 @@
           <p class="text-xs text-red-400 font-semibold tracking-wider uppercase">Official 50/50 Raffle Draw App</p>
         </div>
       </div>
-      <div class="flex items-center space-x-3 text-xs md:text-sm bg-slate-900/60 px-4 py-2 rounded-lg border border-slate-700 flex-wrap justify-center">
-        <div>
-          <span class="text-slate-400">Eligible Pool:</span> 
-          <span id="stat-eligible" class="font-bold text-emerald-400">0</span>
+      <div class="flex items-center gap-3 flex-wrap justify-center">
+        <div class="flex items-center space-x-3 text-xs md:text-sm bg-slate-900/60 px-4 py-2 rounded-lg border border-slate-700 flex-wrap justify-center">
+          <div>
+            <span class="text-slate-400">Eligible Pool:</span>
+            <span id="stat-eligible" class="font-bold text-emerald-400">0</span>
+          </div>
+          <div class="text-slate-600">|</div>
+          <div>
+            <span class="text-slate-400">Draw #:</span>
+            <span id="stat-draw-num" class="font-bold text-amber-400">1</span>
+          </div>
+          <div class="text-slate-600">|</div>
+          <div>
+            <span class="text-slate-400">This Week's Pot:</span>
+            <span id="stat-weekly-pot" class="font-bold text-sky-400">$0.00</span>
+          </div>
+          <div class="text-slate-600">|</div>
+          <div>
+            <span class="text-slate-400">Carryover Amount:</span>
+            <span id="stat-pot" class="font-bold text-purple-400">$0.00</span>
+          </div>
+          <div class="text-slate-600">|</div>
+          <div>
+            <span class="text-slate-400">Winner Share:</span>
+            <span id="stat-prize" class="font-bold text-emerald-400">$0.00</span>
+          </div>
         </div>
-        <div class="text-slate-600">|</div>
-        <div>
-          <span class="text-slate-400">Draw #:</span> 
-          <span id="stat-draw-num" class="font-bold text-amber-400">1</span>
-        </div>
-        <div class="text-slate-600">|</div>
-        <div>
-          <span class="text-slate-400">This Week's Pot:</span>
-          <span id="stat-weekly-pot" class="font-bold text-sky-400">$0.00</span>
-        </div>
-        <div class="text-slate-600">|</div>
-        <div>
-          <span class="text-slate-400">Carryover Amount:</span>
-          <span id="stat-pot" class="font-bold text-purple-400">$0.00</span>
-        </div>
-        <div class="text-slate-600">|</div>
-        <div>
-          <span class="text-slate-400">Winner Share:</span> 
-          <span id="stat-prize" class="font-bold text-emerald-400">$0.00</span>
-        </div>
+
+        <!-- Cast to the clubhouse TV (never shown on the TV itself) -->
+        <button id="cast-btn" type="button" aria-label="Cast to TV" title="Cast the draw to a TV"
+          class="cast-button controller-only w-11 h-11 flex items-center justify-center rounded-lg border border-slate-600 bg-slate-900/60 transition">
+          <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path fill="currentColor" d="M1 18v3h3a3 3 0 0 0-3-3zm0-4v2a5 5 0 0 1 5 5h2a7 7 0 0 0-7-7zm0-4v2a9 9 0 0 1 9 9h2A11 11 0 0 0 1 10zm20-7H3a2 2 0 0 0-2 2v3h2V5h18v14h-7v2h7a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2z"/></svg>
+        </button>
       </div>
     </div>
   </header>
@@ -79,8 +109,8 @@
   <main class="max-w-6xl mx-auto px-4 py-8 grid grid-cols-1 lg:grid-cols-3 gap-8">
     
     <!-- Controls & Data Input -->
-    <section class="lg:col-span-1 space-y-6">
-      
+    <section class="lg:col-span-1 space-y-6 controller-only">
+
       <!-- Members & results, loaded from the draw server -->
       <div class="bg-slate-800 rounded-xl p-6 border border-slate-700 shadow-md space-y-4">
         <h2 class="text-lg font-semibold text-white flex items-center gap-2">
@@ -149,10 +179,10 @@
     </section>
 
     <!-- Main Spinner Area & Winner Display -->
-    <section class="lg:col-span-2 space-y-6">
-      
+    <section id="display-col" class="lg:col-span-2 space-y-6">
+
       <!-- Display Box -->
-      <div class="bg-slate-800 rounded-xl p-8 border border-slate-700 shadow-xl flex flex-col items-center justify-center min-h-[380px] text-center relative overflow-hidden">
+      <div id="display-box" class="bg-slate-800 rounded-xl p-8 border border-slate-700 shadow-xl flex flex-col items-center justify-center min-h-[380px] text-center relative overflow-hidden">
         
         <!-- Curling Stone Decorative Background Element -->
         <div class="absolute -right-16 -bottom-16 opacity-5 pointer-events-none text-slate-100">
@@ -165,7 +195,7 @@
             <i class="fa-solid fa-trophy"></i>
           </div>
           <h3 class="text-xl font-bold text-slate-200">Ready to Draw</h3>
-          <p class="text-xs text-slate-400 max-w-sm mx-auto">Click "Draw Member" to randomly select a member from the live roster.</p>
+          <p id="idle-message" class="text-xs text-slate-400 max-w-sm mx-auto">Click "Draw Member" to randomly select a member from the live roster.</p>
         </div>
 
         <!-- Shuffling State -->
@@ -192,7 +222,7 @@
             </h2>
           </div>
 
-          <div class="grid grid-cols-2 md:grid-cols-4 gap-3 bg-slate-900/80 p-4 rounded-xl border border-slate-700/60 max-w-xl mx-auto text-left text-xs">
+          <div id="winner-details" class="grid grid-cols-2 md:grid-cols-4 gap-3 bg-slate-900/80 p-4 rounded-xl border border-slate-700/60 max-w-xl mx-auto text-left text-xs">
             <div>
               <span class="text-slate-500 block">Paid Status:</span>
               <span id="winner-paid" class="font-bold">Yes</span>
@@ -225,7 +255,7 @@
         </div>
 
         <!-- Action Button -->
-        <div class="mt-8 z-10 w-full max-w-xs relative z-20">
+        <div class="mt-8 z-10 w-full max-w-xs relative z-20 controller-only">
           <button id="draw-btn" disabled class="w-full py-4 px-6 bg-red-600 hover:bg-red-500 disabled:bg-slate-700 disabled:text-slate-500 text-white font-bold text-lg rounded-xl shadow-lg transition duration-200 transform hover:-translate-y-0.5 active:translate-y-0 flex items-center justify-center space-x-3">
             <i class="fa-solid fa-dice"></i>
             <span>Draw Member</span>
@@ -235,7 +265,7 @@
       </div>
 
       <!-- Draw Results (every draw this season, from the Draw Results V2 sheet) -->
-      <div class="bg-slate-800 rounded-xl p-6 border border-slate-700 shadow-md relative z-30">
+      <div class="bg-slate-800 rounded-xl p-6 border border-slate-700 shadow-md relative z-30 controller-only">
         <div class="flex justify-between items-center mb-4 gap-4 flex-wrap">
           <h3 class="text-md font-bold text-white flex items-center gap-2">
             <i class="fa-solid fa-clock-rotate-left text-amber-400"></i> Draw Results
@@ -267,6 +297,9 @@
 
   </main>
 
+  <!-- Short message in the corner (Cast help and errors) -->
+  <div id="toast" role="status" class="hidden controller-only fixed bottom-4 right-4 left-4 sm:left-auto z-50 sm:max-w-sm bg-slate-800 border border-slate-600 rounded-xl p-4 text-xs text-slate-200 shadow-2xl"></div>
+
   <script>
     // The draw server (Apps Script in server/, runs as treasurer@). It checks the PIN on every request,
     // sends the member list and draw results, and records each draw in DrawResults V2.
@@ -274,6 +307,13 @@
 
     // This Week's Pot = paid members X this amount
     const POT_PER_PAID_MEMBER = 1.00;
+
+    // Google Cast. The App ID is from the Cast Developer Console, where the receiver URL is this page
+    // with ?display=tv (see CAST_SETUP.md). The phone or laptop runs the draw and sends each screen to
+    // the TV over this private channel; the TV never talks to the draw server, so it needs no PIN.
+    const CAST_APP_ID = 'D972DF58';
+    const CAST_NAMESPACE = 'urn:x-cast:ca.almontecurling.draw5050';
+    const IS_TV = document.body.classList.contains('tv-mode');
 
     // App State
     let members = [];
@@ -416,7 +456,6 @@
 
     // Update Stats Bar & UI Calculations
     function updateStats() {
-      const total = members.length;
       const eligible = getEligibleMembers().length;
       
       // This Week's Pot: number of 'paid' members X $1.00
@@ -429,25 +468,37 @@
       // Winner Share = This Week's Pot + Carryover Amount
       const prizeVal = weeklyPotVal + carryoverInputVal;
 
-      document.getElementById('stat-eligible').innerText = eligible;
-      document.getElementById('stat-draw-num').innerText = nextDrawNum;
-      
-      const elWeeklyPot = document.getElementById('stat-weekly-pot');
-      if (elWeeklyPot) {
-        elWeeklyPot.innerText = `$${weeklyPotVal.toFixed(2)}`;
-      }
-
-      document.getElementById('stat-pot').innerText = `$${carryoverInputVal.toFixed(2)}`;
-      document.getElementById('stat-prize').innerText = `$${prizeVal.toFixed(2)}`;
-
-      document.getElementById('preview-weekly').innerText = `$${weeklyPotVal.toFixed(2)}`;
-      document.getElementById('preview-total').innerText = `$${carryoverInputVal.toFixed(2)}`;
-      document.getElementById('payout-preview').innerText = `$${prizeVal.toFixed(2)}`;
+      const stats = {
+        eligible: eligible,
+        drawNum: nextDrawNum,
+        weekly: weeklyPotVal,
+        carryover: carryoverInputVal,
+        prize: prizeVal,
+        sound: document.getElementById('sound-effects').checked
+      };
+      applyStats(stats);
+      castSend({ type: 'stats', stats: stats });   // keeps the TV's header in step
 
       const drawBtn = document.getElementById('draw-btn');
       if (!isDrawing) {
         drawBtn.disabled = (eligible === 0);
       }
+    }
+
+    // Write the numbers into the page (here and on the TV)
+    function applyStats(s) {
+      document.getElementById('stat-eligible').innerText = s.eligible;
+      document.getElementById('stat-draw-num').innerText = s.drawNum;
+      document.getElementById('stat-weekly-pot').innerText = `$${s.weekly.toFixed(2)}`;
+      document.getElementById('stat-pot').innerText = `$${s.carryover.toFixed(2)}`;
+      document.getElementById('stat-prize').innerText = `$${s.prize.toFixed(2)}`;
+
+      document.getElementById('preview-weekly').innerText = `$${s.weekly.toFixed(2)}`;
+      document.getElementById('preview-total').innerText = `$${s.carryover.toFixed(2)}`;
+      document.getElementById('payout-preview').innerText = `$${s.prize.toFixed(2)}`;
+
+      // The TV follows the phone's "Enable Sound Effects" setting
+      if (IS_TV) document.getElementById('sound-effects').checked = s.sound;
     }
 
     // Start Random Selection Animation
@@ -465,10 +516,6 @@
       isDrawing = true;
       document.getElementById('draw-btn').disabled = true;
 
-      document.getElementById('display-idle').classList.add('hidden');
-      document.getElementById('display-winner').classList.add('hidden');
-      document.getElementById('display-shuffling').classList.remove('hidden');
-
       let speed = 50;
       let counter = 0;
       const totalIterations = 40;
@@ -476,10 +523,10 @@
       function shuffleStep() {
         const randomIndex = Math.floor(Math.random() * eligible.length);
         const candidate = eligible[randomIndex];
-        
-        document.getElementById('shuffle-name').innerText = candidate.fullName;
-        document.getElementById('shuffle-meta').innerText = `Paid Status: ${candidate.paid}`;
-        playTickSound();
+        const meta = `Paid Status: ${candidate.paid}`;
+
+        renderShuffle(candidate.fullName, meta);
+        castSend({ type: 'shuffle', name: candidate.fullName, meta: meta });   // the TV spins along
 
         counter++;
         if (counter < totalIterations) {
@@ -493,6 +540,17 @@
       }
 
       shuffleStep();
+    }
+
+    // Show one spinning name (here and on the TV)
+    function renderShuffle(name, meta) {
+      document.getElementById('display-idle').classList.add('hidden');
+      document.getElementById('display-winner').classList.add('hidden');
+      document.getElementById('display-shuffling').classList.remove('hidden');
+
+      document.getElementById('shuffle-name').innerText = name;
+      document.getElementById('shuffle-meta').innerText = meta;
+      playTickSound();
     }
 
     function finalizeDraw(drawnMember) {
@@ -541,26 +599,47 @@
         carryover: nextCarryoverVal
       });
 
+      // Only what's on screen goes to the TV
+      const displayData = {
+        fullName: drawnMember.fullName,
+        paid: drawnMember.paid,
+        isPaid: isPaid,
+        weekly: formattedWeekly,
+        carryover: formattedCarryover,
+        prize: formattedPrize,
+        nextCarryover: formattedNextCarryover
+      };
+      renderWinnerDisplay(displayData);
+      castSend({ type: 'winner', data: displayData });
+
+      renderHistory();
+      updateStats();
+      sendDrawUpdateToSheet(drawRecord);
+    }
+
+    // Show the draw result (here and on the TV)
+    function renderWinnerDisplay(d) {
+      document.getElementById('display-idle').classList.add('hidden');
       document.getElementById('display-shuffling').classList.add('hidden');
       document.getElementById('display-winner').classList.remove('hidden');
 
-      document.getElementById('winner-name').innerText = drawnMember.fullName;
-      
-      const paidEl = document.getElementById('winner-paid');
-      paidEl.innerText = drawnMember.paid;
-      paidEl.className = isPaid ? "font-bold text-emerald-400" : "font-bold text-red-400";
+      document.getElementById('winner-name').innerText = d.fullName;
 
-      document.getElementById('winner-weekly').innerText = formattedWeekly;
-      document.getElementById('winner-carryover').innerText = formattedCarryover;
-      
+      const paidEl = document.getElementById('winner-paid');
+      paidEl.innerText = d.paid;
+      paidEl.className = d.isPaid ? "font-bold text-emerald-400" : "font-bold text-red-400";
+
+      document.getElementById('winner-weekly').innerText = d.weekly;
+      document.getElementById('winner-carryover').innerText = d.carryover;
+
       const prizeEl = document.getElementById('winner-prize');
-      prizeEl.innerText = formattedPrize;
-      prizeEl.className = isPaid ? "font-bold text-emerald-400" : "font-bold text-slate-400";
+      prizeEl.innerText = d.prize;
+      prizeEl.className = d.isPaid ? "font-bold text-emerald-400" : "font-bold text-slate-400";
 
       const badgeEl = document.getElementById('winner-badge');
       const nextCarryoverBox = document.getElementById('next-carryover-container');
 
-      if (isPaid) {
+      if (d.isPaid) {
         badgeEl.className = "inline-block px-4 py-1.5 bg-emerald-500/20 border border-emerald-500/40 rounded-full text-emerald-400 text-xs font-bold tracking-wider uppercase";
         badgeEl.innerHTML = `<i class="fa-solid fa-award mr-1"></i> Winner Selected!`;
         nextCarryoverBox.classList.add('hidden');
@@ -575,14 +654,10 @@
         badgeEl.className = "inline-block px-4 py-1.5 bg-amber-500/20 border border-amber-500/40 rounded-full text-amber-400 text-xs font-bold tracking-wider uppercase";
         badgeEl.innerHTML = `<i class="fa-solid fa-triangle-exclamation mr-1"></i> Non-Paid Member Drawn — Pot Carries Over!`;
         
-        document.getElementById('winner-next-carryover').innerText = formattedNextCarryover;
+        document.getElementById('winner-next-carryover').innerText = d.nextCarryover;
         document.getElementById('next-carryover-breakdown').innerText = `(Equal to Winner Share: This Week's Pot + Carryover Amount)`;
         nextCarryoverBox.classList.remove('hidden');
       }
-
-      renderHistory();
-      updateStats();
-      sendDrawUpdateToSheet(drawRecord);
     }
 
     // Today as yyyy-mm-dd on this computer's clock (toISOString is UTC: a draw after 7 pm would get tomorrow's date)
@@ -633,6 +708,115 @@
       }).join('');
     }
 
+    // ==================================================================
+    // GOOGLE CAST (same approach as the Bonspiel Manager). Needs Chrome on an Android phone or a
+    // computer. The Cast button opens this page with ?display=tv on the Chromecast; every change to
+    // the stats, the spinning names and the result is then sent to it as a small message.
+    // ==================================================================
+    let castAvailable = false;
+    let lastStatsMsg = null;     // the latest screen, sent again when a TV joins mid-way
+    let lastDisplayMsg = null;
+
+    function castSession() {
+      return castAvailable ? cast.framework.CastContext.getInstance().getCurrentSession() : null;
+    }
+
+    function castSend(msg) {
+      if (IS_TV) return;
+      if (msg.type === 'stats') lastStatsMsg = msg; else lastDisplayMsg = msg;
+      const session = castSession();
+      if (session) session.sendMessage(CAST_NAMESPACE, msg).catch(err => console.warn('Cast send failed:', err));
+    }
+
+    // Bring a TV that has just joined up to date with what's on this screen
+    function castCatchUp() {
+      const session = castSession();
+      if (!session) return;
+      if (lastStatsMsg) session.sendMessage(CAST_NAMESPACE, lastStatsMsg).catch(() => {});
+      if (lastDisplayMsg) session.sendMessage(CAST_NAMESPACE, lastDisplayMsg).catch(() => {});
+    }
+
+    function toast(text) {
+      const el = document.getElementById('toast');
+      el.textContent = text;
+      el.classList.remove('hidden');
+      clearTimeout(toast.timer);
+      toast.timer = setTimeout(() => el.classList.add('hidden'), 8000);
+    }
+
+    function explainCastError(error) {
+      if (error === chrome.cast.ErrorCode.CANCEL) return;
+      // With nothing nearby, Chrome can report a general session error instead.
+      const noDevices = cast.framework.CastContext.getInstance().getCastState() === cast.framework.CastState.NO_DEVICES_AVAILABLE;
+      if (noDevices || error === chrome.cast.ErrorCode.RECEIVER_UNAVAILABLE) {
+        toast('No Cast devices found. Check the TV is on and this device is on the same Wi-Fi.');
+      } else if (error === chrome.cast.ErrorCode.SESSION_ERROR) {
+        toast("The TV couldn't open the draw. Restart the TV's Cast device and try again.");
+      } else {
+        toast(`Couldn't start casting: ${error}`);
+      }
+    }
+
+    function onCastClick() {
+      if (!castAvailable) {
+        toast('Casting needs Chrome on an Android phone or a computer. It does not work on iPhones or iPads.');
+        return;
+      }
+      const context = cast.framework.CastContext.getInstance();
+      if (context.getCurrentSession()) {
+        if (confirm('Stop casting to the TV?')) context.endCurrentSession(true);
+        return;
+      }
+      context.requestSession().catch(explainCastError);
+    }
+
+    function setupCast() {
+      const button = document.getElementById('cast-btn');
+      button.addEventListener('click', onCastClick);
+      window.__onGCastApiAvailable = (isAvailable) => {
+        if (!isAvailable) return;
+        castAvailable = true;
+        const context = cast.framework.CastContext.getInstance();
+        context.setOptions({
+          receiverApplicationId: CAST_APP_ID,
+          autoJoinPolicy: chrome.cast.AutoJoinPolicy.ORIGIN_SCOPED,
+        });
+        context.addEventListener(cast.framework.CastContextEventType.SESSION_STATE_CHANGED, (e) => {
+          const casting = Boolean(context.getCurrentSession());
+          button.classList.toggle('casting', casting);
+          button.title = casting ? 'Casting to the TV. Click to stop.' : 'Cast the draw to a TV';
+          const S = cast.framework.SessionState;
+          if (e.sessionState === S.SESSION_STARTED || e.sessionState === S.SESSION_RESUMED) castCatchUp();
+        });
+      };
+      const script = document.createElement('script');
+      script.src = 'https://www.gstatic.com/cv/js/sender/v1/cast_sender.js?loadCastFramework=1';
+      document.head.append(script);
+    }
+
+    // The TV side: show whatever the phone or laptop sends. It never loads members or records draws.
+    function startTvScreen() {
+      document.querySelector('#display-idle h3').innerText = 'Next Draw Coming Up';
+      document.getElementById('idle-message').innerText = 'Stay tuned, the 50/50 draw will appear here.';
+      if (!/CrKey/.test(navigator.userAgent)) return;   // opened in an ordinary browser: nothing will arrive
+      const script = document.createElement('script');
+      script.src = 'https://www.gstatic.com/cast/sdk/libs/caf_receiver/v3/cast_receiver_framework.js';
+      script.onload = () => {
+        const context = cast.framework.CastReceiverContext.getInstance();
+        context.addCustomMessageListener(CAST_NAMESPACE, (e) => {   // must be added before start()
+          const msg = typeof e.data === 'string' ? JSON.parse(e.data) : e.data;
+          if (msg.type === 'stats') applyStats(msg.stats);
+          else if (msg.type === 'shuffle') renderShuffle(msg.name, msg.meta);
+          else if (msg.type === 'winner') renderWinnerDisplay(msg.data);
+        });
+        const options = new cast.framework.CastReceiverOptions();
+        options.customNamespaces = { [CAST_NAMESPACE]: cast.framework.system.MessageType.JSON };
+        options.disableIdleTimeout = true;   // keep showing between draws, and after the phone leaves
+        context.start(options);
+      };
+      document.head.append(script);
+    }
+
     // PIN lock. The draw server checks the PIN on every request; nothing loads without it.
     // The PIN is remembered on this device once it works (Lock forgets it). Change it in the server's PIN script property.
     const PIN_KEY = "acc_5050_pin";
@@ -679,6 +863,8 @@
 
     // Initialize Page
     window.addEventListener('DOMContentLoaded', async () => {
+      if (IS_TV) return startTvScreen();   // the TV shows the draw only: no PIN, no server
+      setupCast();
       // Settings from earlier versions (Sheet links, the old PIN check) are no longer used
       try { ['acc_5050_unlocked', 'acc_5050_webapp_url', 'acc_5050_sheet_url'].forEach(k => localStorage.removeItem(k)); } catch (e) {}
       const pin = savedPin();
@@ -700,6 +886,7 @@
     document.getElementById('lock-btn').addEventListener('click', () => lockApp());
     document.getElementById('carryover-amount').addEventListener('input', updateStats);
     document.getElementById('exclude-winners').addEventListener('change', updateStats);
+    document.getElementById('sound-effects').addEventListener('change', updateStats);   // the TV follows it
     document.getElementById('draw-btn').addEventListener('click', startDraw);
   </script>
 </body>
