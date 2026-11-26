@@ -163,13 +163,6 @@
         </div>
 
         <div class="flex items-center space-x-3 pt-2">
-          <input id="exclude-winners" type="checkbox" checked class="w-4 h-4 text-red-600 bg-slate-900 border-slate-700 rounded focus:ring-red-500">
-          <label for="exclude-winners" class="text-xs text-slate-300 select-none">
-            Exclude previously drawn members in this session
-          </label>
-        </div>
-
-        <div class="flex items-center space-x-3">
           <input id="sound-effects" type="checkbox" checked class="w-4 h-4 text-red-600 bg-slate-900 border-slate-700 rounded focus:ring-red-500">
           <label for="sound-effects" class="text-xs text-slate-300 select-none">
             Enable Sound Effects
@@ -317,7 +310,7 @@
 
     // App State
     let members = [];
-    let winnersList = [];      // drawn this session (for "Exclude previously drawn members")
+    let winnersList = [];      // drawn this session (they can't be drawn again)
     let drawResults = [];      // every draw from the Draw Results V2 sheet, plus any drawn this session
     let resultsLoaded = false;
     let resultsError = false;
@@ -444,14 +437,9 @@
       }
     }
 
-    // Get Eligible Members Pool (ALL members included)
+    // Eligible members: everyone not already drawn this session
     function getEligibleMembers() {
-      const excludePrevious = document.getElementById('exclude-winners').checked;
-      
-      return members.filter(m => {
-        const matchWinner = !excludePrevious || !winnersList.some(w => w.id === m.id);
-        return matchWinner;
-      });
+      return members.filter(m => !winnersList.some(w => w.id === m.id));
     }
 
     // Update Stats Bar & UI Calculations
@@ -885,7 +873,6 @@
     document.getElementById('sync-sheets-btn').addEventListener('click', loadData);
     document.getElementById('lock-btn').addEventListener('click', () => lockApp());
     document.getElementById('carryover-amount').addEventListener('input', updateStats);
-    document.getElementById('exclude-winners').addEventListener('change', updateStats);
     document.getElementById('sound-effects').addEventListener('change', updateStats);   // the TV follows it
     document.getElementById('draw-btn').addEventListener('click', startDraw);
   </script>
